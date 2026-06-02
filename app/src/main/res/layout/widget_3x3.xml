@@ -36,7 +36,8 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginVertical="8dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp"
         android:background="#44FFFFFF" />
 
     <!-- 中间区域：左右两列 -->

@@ -33,48 +33,68 @@ abstract class BaseWifiWidget(private val layoutId: Int) : AppWidgetProvider() {
         val cpu = sp.getString("cpu", "--") ?: "--"
         val mem = sp.getString("mem", "--") ?: "--"
         val netType = sp.getString("net_type", "") ?: ""
-        // 新增字段
         val appVer = sp.getString("app_ver", "") ?: ""
         val batteryCurrent = sp.getString("battery_current", "--") ?: "--"
         val batteryVoltage = sp.getString("battery_voltage", "--") ?: "--"
         val internalStorage = sp.getString("internal_storage", "--") ?: "--"
         val clientIp = sp.getString("client_ip", "") ?: ""
 
-        // 通用字段映射 (子类布局中存在的 ID 才会生效)
-        rv.setTextViewText(R.id.tv_model, model)
-        rv.setTextViewText(R.id.tv_flow, flow.replace("GB", "").trim())
-        rv.setTextViewText(R.id.tv_daily, daily.replace("GB", "").trim())
-        rv.setTextViewText(R.id.tv_signal, signal)
-        rv.setTextViewText(R.id.tv_temp, temp)
-        rv.setTextViewText(R.id.tv_battery, if (battery.contains("%")) battery else "$battery%")
-        // 新增字段映射
-        rv.setTextViewText(R.id.tv_cpu_mem, cpu)
-        rv.setTextViewText(R.id.tv_net_type, netType)
-        rv.setTextViewText(R.id.tv_app_ver, "UFI v$appVer")
-        rv.setTextViewText(R.id.tv_current, batteryCurrent)
-        rv.setTextViewText(R.id.tv_voltage, batteryVoltage)
-        rv.setTextViewText(R.id.tv_storage, internalStorage)
-        rv.setTextViewText(R.id.tv_client_ip, clientIp)
+        // 通用字段映射
+        safeSetText(rv, R.id.tv_model, model)
+        safeSetText(rv, R.id.tv_flow, flow.replace("GB", "").trim())
+        safeSetText(rv, R.id.tv_daily, daily.replace("GB", "").trim())
+        safeSetText(rv, R.id.tv_signal, signal)
+        safeSetText(rv, R.id.tv_temp, temp)
+        safeSetText(rv, R.id.tv_battery, if (battery.contains("%")) battery else "$battery%")
+        safeSetText(rv, R.id.tv_cpu_mem, cpu)
+        safeSetText(rv, R.id.tv_net_type, netType)
+        safeSetText(rv, R.id.tv_app_ver, "UFI v$appVer")
+        safeSetText(rv, R.id.tv_current, batteryCurrent)
+        safeSetText(rv, R.id.tv_voltage, batteryVoltage)
+        safeSetText(rv, R.id.tv_storage, internalStorage)
+        safeSetText(rv, R.id.tv_client_ip, clientIp)
 
-        // 根据设置控制可见性 (如果布局里有这些 ID)
+        // 显示/隐藏控制
         val showFlow = SPUtil.getShowFlow(context)
         val showSignal = SPUtil.getShowSignal(context)
         val showTemp = SPUtil.getShowTemp(context)
 
-        rv.setViewVisibility(R.id.tv_flow, if (showFlow) View.VISIBLE else View.GONE)
-        rv.setViewVisibility(R.id.tv_daily, if (showFlow) View.VISIBLE else View.GONE)
-        rv.setViewVisibility(R.id.tv_signal, if (showSignal) View.VISIBLE else View.GONE)
-        rv.setViewVisibility(R.id.tv_temp, if (showTemp) View.VISIBLE else View.GONE)
+        safeSetVisibility(rv, R.id.tv_flow, showFlow)
+        safeSetVisibility(rv, R.id.tv_daily, showFlow)
+        safeSetVisibility(rv, R.id.tv_signal, showSignal)
+        safeSetVisibility(rv, R.id.tv_temp, showTemp)
+    }
+
+    /** 安全设置文本，避免 ID 不存在时崩溃 */
+    private fun safeSetText(rv: RemoteViews, id: Int, text: CharSequence) {
+        try {
+            rv.setTextViewText(id, text)
+        } catch (_: Exception) {}
+    }
+
+    /** 安全设置可见性 */
+    private fun safeSetVisibility(rv: RemoteViews, id: Int, visible: Boolean) {
+        try {
+            rv.setViewVisibility(id, if (visible) View.VISIBLE else View.GONE)
+        } catch (_: Exception) {}
     }
 }
 
-// ======== 9 种小组件尺寸 (1x1 ~ 3x3) ========
-class WifiWidget1x1 : BaseWifiWidget(R.layout.widget_1x1)
-class WifiWidget1x2 : BaseWifiWidget(R.layout.widget_1x2)
-class WifiWidget1x3 : BaseWifiWidget(R.layout.widget_1x3)
-class WifiWidget2x1 : BaseWifiWidget(R.layout.widget_2x1)
-class WifiWidget2x2 : BaseWifiWidget(R.layout.widget_2x2)
-class WifiWidget2x3 : BaseWifiWidget(R.layout.widget_2x3)
-class WifiWidget3x1 : BaseWifiWidget(R.layout.widget_3x1)
-class WifiWidget3x2 : BaseWifiWidget(R.layout.widget_3x2)
-class WifiWidget3x3 : BaseWifiWidget(R.layout.widget_3x3)
+// ======== 常用小组件尺寸 ========
+class WifiWidget2x2 : BaseWifiWidget(R.layout.widget_2x2) {
+    override fun updateViews(context: Context, rv: RemoteViews) {
+        super.updateViews(context, rv)
+    }
+}
+
+class WifiWidget3x2 : BaseWifiWidget(R.layout.widget_3x2) {
+    override fun updateViews(context: Context, rv: RemoteViews) {
+        super.updateViews(context, rv)
+    }
+}
+
+class WifiWidget3x3 : BaseWifiWidget(R.layout.widget_3x3) {
+    override fun updateViews(context: Context, rv: RemoteViews) {
+        super.updateViews(context, rv)
+    }
+}

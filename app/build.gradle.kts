@@ -44,6 +44,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.okhttp)
     implementation(libs.jsoup)
+    implementation(libs.jspecify)
     implementation(libs.androidx.work.runtime.ktx)
 
     testImplementation(libs.junit)

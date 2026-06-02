@@ -130,13 +130,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateAllWidgets() {
         val widgetClasses = arrayOf(
-            WifiWidget1x1::class.java,
-            WifiWidget1x2::class.java,
-            WifiWidget1x3::class.java,
-            WifiWidget2x1::class.java,
             WifiWidget2x2::class.java,
-            WifiWidget2x3::class.java,
-            WifiWidget3x1::class.java,
             WifiWidget3x2::class.java,
             WifiWidget3x3::class.java
         )

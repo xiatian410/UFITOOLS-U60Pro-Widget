@@ -135,7 +135,7 @@
         <!-- 分隔线 -->
         <View
             android:layout_width="1dp"
-            android:layout_height="match_parent"
+            android:layout_height="48dp"
             android:layout_marginVertical="8dp"
             android:background="#DFE6E9" />
 
