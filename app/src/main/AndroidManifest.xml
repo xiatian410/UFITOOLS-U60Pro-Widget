@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.UFITOOLSWidget"
+        android:usesCleartextTraffic="true">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.UFITOOLSWidget">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".WebViewActivity"
+            android:label="设备管理后台"
+            android:theme="@style/Theme.UFITOOLSWidget" />
+
+        <receiver
+            android:name=".widget.WifiWidget1x1"
+            android:exported="true"
+            android:label="WiFi 状态 (1x1)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_1x1_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.WifiWidget1x2"
+            android:exported="true"
+            android:label="WiFi 状态 (1x2)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_1x2_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.WifiWidget1x3"
+            android:exported="true"
+            android:label="WiFi 状态 (1x3)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_1x3_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.WifiWidget2x1"
+            android:exported="true"
+            android:label="WiFi 状态 (2x1)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_2x1_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.WifiWidget2x2"
+            android:exported="true"
+            android:label="WiFi 状态 (2x2)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_2x2_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.WifiWidget2x3"
+            android:exported="true"
+            android:label="WiFi 状态 (2x3)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_2x3_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.WifiWidget3x1"
+            android:exported="true"
+            android:label="WiFi 状态 (3x1)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_3x1_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.WifiWidget3x2"
+            android:exported="true"
+            android:label="WiFi 状态 (3x2)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_3x2_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.WifiWidget3x3"
+            android:exported="true"
+            android:label="WiFi 状态 (3x3)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_3x3_info" />
+        </receiver>
+    </application>
+
+</manifest>

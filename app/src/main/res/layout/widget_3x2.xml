@@ -1,0 +1,290 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="@drawable/widget_bg_shape">
+
+    <!-- 第一行：型号 + 版本 | 信号格 电量 充电图标 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/tv_model"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:textColor="#2D3436"
+            android:textStyle="bold"
+            android:textSize="14sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:text="U30 Air" />
+
+        <TextView
+            android:id="@+id/tv_app_ver"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:textColor="#636E72"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:text="UFI v4.0.0" />
+
+        <!-- 信号格 -->
+        <TextView
+            android:id="@+id/tv_signal_icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="▮▮▮▮▮"
+            android:textColor="#00B894"
+            android:textSize="12sp"
+            android:layout_marginEnd="6dp" />
+
+        <!-- 电量 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginEnd="6dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="▢"
+                android:textColor="#00B894"
+                android:textSize="14sp"
+                android:layout_marginEnd="2dp" />
+            <TextView
+                android:id="@+id/tv_battery"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#2D3436"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:maxLines="1"
+                android:text="90%" />
+        </LinearLayout>
+
+        <!-- 充电图标 -->
+        <TextView
+            android:id="@+id/tv_charging_icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⚡"
+            android:textColor="#FDCB6E"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- 第二行：今日流量 / 本月流量 大数字 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="4dp">
+
+        <!-- 左：今日流量 -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="今日流量"
+                android:textColor="#0984E3"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="bottom"
+                android:layout_marginTop="2dp">
+                <TextView
+                    android:id="@+id/tv_daily"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#2D3436"
+                    android:textStyle="bold"
+                    android:textSize="32sp"
+                    android:maxLines="1"
+                    android:text="10.6" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="GB"
+                    android:textColor="#636E72"
+                    android:textSize="14sp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginBottom="4dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 分隔线 -->
+        <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:layout_marginVertical="8dp"
+            android:background="#DFE6E9" />
+
+        <!-- 右：本月流量 -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="本月流量"
+                android:textColor="#0984E3"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="bottom"
+                android:layout_marginTop="2dp">
+                <TextView
+                    android:id="@+id/tv_flow"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#2D3436"
+                    android:textStyle="bold"
+                    android:textSize="32sp"
+                    android:maxLines="1"
+                    android:text="22.7" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="GB"
+                    android:textColor="#636E72"
+                    android:textSize="14sp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginBottom="4dp" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 第三行：温度 CPU 运营商 信号 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="4dp">
+
+        <TextView
+            android:id="@+id/tv_temp"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:textColor="#E17055"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:gravity="center"
+            android:text="🌡 51.9°C" />
+
+        <TextView
+            android:id="@+id/tv_cpu_mem"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:textColor="#6C5CE7"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:gravity="center"
+            android:text="🖥 13%" />
+
+        <TextView
+            android:id="@+id/tv_net_type"
+            android:layout_width="0dp"
+            android:layout_weight="1.2"
+            android:layout_height="wrap_content"
+            android:textColor="#00B894"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:gravity="center"
+            android:text="🌐 中国移动 SA" />
+
+        <TextView
+            android:id="@+id/tv_signal"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:textColor="#2D3436"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:gravity="center"
+            android:text="📶 -87dBm" />
+    </LinearLayout>
+
+    <!-- 第四行：WiFi名 频段 状态 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="4dp">
+
+        <TextView
+            android:id="@+id/tv_wifi_name"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:textColor="#2D3436"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:gravity="center"
+            android:text="📡 ZTE_E8CDF6" />
+
+        <TextView
+            android:id="@+id/tv_band"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:textColor="#6C5CE7"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:gravity="center"
+            android:text="📦 B14" />
+
+        <TextView
+            android:id="@+id/tv_status"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:textColor="#00B894"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:gravity="center"
+            android:text="✅ 就绪" />
+    </LinearLayout>
+
+    <!-- 第五行：更新时间 -->
+    <TextView
+        android:id="@+id/tv_update_time"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#B2BEC3"
+        android:textSize="11sp"
+        android:maxLines="1"
+        android:gravity="center"
+        android:text="2026-05-30 20:07" />
+</LinearLayout>
