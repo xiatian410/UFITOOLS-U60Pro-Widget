@@ -1,6 +1,7 @@
 package com.ufi_toolswidget.util
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -8,6 +9,8 @@ import org.json.JSONObject
 import java.util.Locale
 
 object WifiCrawl {
+    
+    private const val TAG = "WifiCrawl"
     
     var lastRawResponse: String = ""
     var lastError: String = ""
@@ -31,17 +34,29 @@ object WifiCrawl {
             val cpuUsage = baseInfo.optDouble("cpu_usage", 0.0)
             val memUsage = baseInfo.optDouble("mem_usage", 0.0)
             
-            // 流量 (daily_data 来自 baseDeviceInfo)
-            val dailyRaw = baseInfo.optLong("daily_data", 0L)
+            // 日流量 (daily_data 来自 baseDeviceInfo，可能是多种字段名)
+            val dailyRaw = extractTrafficBytes(baseInfo, "daily_data", "daily_tx_bytes", "daily_rx_bytes", "day_data")
 
-            // 月流量：尝试从 goform 代理获取，失败则用缓存
-            var monthlyRaw = SPUtil.getCachedMonthlyData(context)
-            val monthlyInfo = fetchApi("/api/goform/goform_get_cmd_process?is_all=true&cmd=monthly_data", t, auth)
-            val monthlyFromGoform = monthlyInfo?.optLong("monthly_data", -1L) ?: -1L
-            if (monthlyFromGoform > 0) {
-                monthlyRaw = monthlyFromGoform
-                SPUtil.setCachedMonthlyData(context, monthlyFromGoform)
+            // 月流量：从 baseDeviceInfo 中尝试提取（优先级最高）
+            var monthlyRaw = extractTrafficBytes(baseInfo, "monthly_data", "monthly_tx_bytes", "monthly_rx_bytes", "month_data", "total_data")
+            
+            // 如果 baseDeviceInfo 中没有月流量，尝试从 goform 代理获取
+            if (monthlyRaw <= 0) {
+                val monthlyInfo = fetchApi("/api/goform/goform_get_cmd_process?is_all=true&cmd=monthly_data", t, auth)
+                val monthlyFromGoform = extractTrafficBytes(monthlyInfo, "monthly_data", "monthly_tx_bytes", "monthly_rx_bytes", "month_data")
+                if (monthlyFromGoform > 0) {
+                    monthlyRaw = monthlyFromGoform
+                }
             }
+            
+            // 如果 API 都没返回月流量，用缓存
+            if (monthlyRaw <= 0) {
+                monthlyRaw = SPUtil.getCachedMonthlyData(context)
+            } else {
+                SPUtil.setCachedMonthlyData(context, monthlyRaw)
+            }
+            
+            Log.d(TAG, "dailyRaw=$dailyRaw, monthlyRaw=$monthlyRaw")
             
             // 温度 (60620 -> 60.6)
             val tempRaw = baseInfo.optDouble("cpu_temp", 0.0)
@@ -111,9 +126,74 @@ object WifiCrawl {
         }
     }
 
+    /**
+     * 从 JSON 中提取流量字节数，自动适配不同单位和字段名
+     * 
+     * 有些固件返回的是 Bytes，有些是 KB，有些是 MB。
+     * 通过数值大小判断单位：>10GB 量级 = Bytes，>10MB 量级 = KB，否则 = MB
+     */
+    private fun extractTrafficBytes(json: JSONObject?, vararg keys: String): Long {
+        if (json == null) return 0L
+        
+        for (key in keys) {
+            // 尝试数字类型字段
+            val longVal = json.optLong(key, -1L)
+            if (longVal > 0) {
+                // 根据数值大小判断实际单位
+                // 如果 > 10GB (10737418240 bytes)，很可能是 Bytes 单位
+                if (longVal > 10_737_418_240L) {
+                    Log.d(TAG, "  $key=$longVal -> 判断为 Bytes 单位")
+                    return longVal
+                }
+                // 如果 > 10MB (10485760)，很可能是 KB 单位
+                if (longVal > 10_485_760L) {
+                    Log.d(TAG, "  $key=$longVal -> 判断为 KB 单位，转换为 Bytes")
+                    return longVal * 1024L
+                }
+                // 否则可能是 MB 单位
+                if (longVal > 10_240L) {
+                    Log.d(TAG, "  $key=$longVal -> 判断为 MB 单位，转换为 Bytes")
+                    return longVal * 1024L * 1024L
+                }
+                // 数值很小，可能是 GB 单位
+                if (longVal > 0) {
+                    Log.d(TAG, "  $key=$longVal -> 判断为 GB 单位，转换为 Bytes")
+                    return longVal * 1024L * 1024L * 1024L
+                }
+            }
+            
+            // 尝试字符串类型字段（有些固件返回字符串数字）
+            val strVal = json.optString(key, "")
+            if (strVal.isNotEmpty() && strVal != "null") {
+                val parsed = strVal.toDoubleOrNull()
+                if (parsed != null && parsed > 0) {
+                    val bytes = parsed.toLong()
+                    if (bytes > 10_737_418_240L) {
+                        Log.d(TAG, "  $key=$strVal(String) -> 判断为 Bytes 单位")
+                        return bytes
+                    }
+                    if (bytes > 10_485_760L) {
+                        Log.d(TAG, "  $key=$strVal(String) -> 判断为 KB 单位，转换为 Bytes")
+                        return bytes * 1024L
+                    }
+                    if (bytes > 10_240L) {
+                        Log.d(TAG, "  $key=$strVal(String) -> 判断为 MB 单位，转换为 Bytes")
+                        return bytes * 1024L * 1024L
+                    }
+                    if (bytes > 0) {
+                        Log.d(TAG, "  $key=$strVal(String) -> 判断为 GB 单位，转换为 Bytes")
+                        return bytes * 1024L * 1024L * 1024L
+                    }
+                }
+            }
+        }
+        return 0L
+    }
+
     private fun formatFlow(bytes: Long): String {
         if (bytes <= 0) return "0.00 GB"
-        return String.format(Locale.getDefault(), "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+        val gb = bytes / (1024.0 * 1024.0 * 1024.0)
+        return String.format(Locale.getDefault(), "%.2f GB", gb)
     }
 
     private fun formatTemp(raw: Double): String {

@@ -119,7 +119,7 @@ class MainActivity : AppCompatActivity() {
                 tvVoltage.text = "电压：${data.batteryVoltage}"
                 tvStorage.text = "存储：${data.internalStorage}"
                 tvClientIp.text = "IP：${data.clientIp}"
-                tvDebug.text = "采集成功\nv${data.appVer}\nRaw Data: ${WifiCrawl.lastRawResponse}"
+                tvDebug.text = "采集成功 | 月:${data.flow} | 日:${data.dailyFlow}\n原始数据: ${WifiCrawl.lastRawResponse.take(200)}"
                 SPUtil.saveData(this@MainActivity, data)
                 updateAllWidgets()
             } else {
