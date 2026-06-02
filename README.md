@@ -1,6 +1,6 @@
 # UFI-TOOLS Widget
 
-[![Build APK](https://github.com/你的用户名/UFITOOLSWidget/actions/workflows/build.yml/badge.svg)](https://github.com/你的用户名/UFITOOLSWidget/actions/workflows/build.yml)
+[![Build APK](https://github.com/Asunano/UFITOOLS-Widget/actions/workflows/build.yml/badge.svg)](https://github.com/Asunano/UFITOOLS-Widget/actions/workflows/build.yml)
 
 一个 Android 桌面小组件应用，用于实时监控随身 WiFi 设备（如 F50、U30 Air 等）的运行状态。
 
@@ -106,3 +106,6 @@ APK 输出路径：`app/build/outputs/apk/debug/app-debug.apk`
 
 - [UFI-TOOLS](https://github.com/kanoqwq/UFI-TOOLS) - 原版 UFI 设备管理工具
 - API 接口文档参考 UFI-TOOLS 项目
+=======
+# UFITOOLS-Widget
+>>>>>>> 5c5cd7491c39c96ecb922f596f4ccfa04ff7e1f2
