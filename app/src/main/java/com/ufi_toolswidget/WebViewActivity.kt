@@ -7,6 +7,7 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.ufi_toolswidget.util.BackgroundUtil
 import com.ufi_toolswidget.util.NetUtil
 import okhttp3.Cookie
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -15,6 +16,7 @@ class WebViewActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_webview)
+        BackgroundUtil.applyWindowBackground(this)
 
         val webView = findViewById<WebView>(R.id.webview)
         val btnFinish = findViewById<Button>(R.id.btn_finish_webview)
@@ -29,6 +31,11 @@ class WebViewActivity : AppCompatActivity() {
             Toast.makeText(this, "会话已同步", Toast.LENGTH_SHORT).show()
             finish()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        BackgroundUtil.applyWindowBackground(this)
     }
 
     private fun syncCookiesToOkHttp() {

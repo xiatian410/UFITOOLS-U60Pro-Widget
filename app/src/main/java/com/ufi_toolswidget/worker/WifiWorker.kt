@@ -1,40 +1,28 @@
 package com.ufi_toolswidget.worker
 
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import androidx.work.Worker
+import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.ufi_toolswidget.util.SPUtil
 import com.ufi_toolswidget.util.WifiCrawl
-import com.ufi_toolswidget.widget.*
-import kotlinx.coroutines.runBlocking
+import com.ufi_toolswidget.widget.BaseWifiWidget
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-class WifiWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
-    override fun doWork(): Result {
-        runBlocking {
+class WifiWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        try {
             val data = WifiCrawl.getWifiData(applicationContext)
             if (data != null) {
                 SPUtil.saveData(applicationContext, data)
-                
-                val widgetClasses = arrayOf(
-                    WifiWidget2x2::class.java,
-                    WifiWidget3x2::class.java,
-                    WifiWidget3x3::class.java
-                )
-                
-                for (clazz in widgetClasses) {
-                    val intent = Intent(applicationContext, clazz).apply {
-                        action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
-                        val ids = AppWidgetManager.getInstance(applicationContext)
-                            .getAppWidgetIds(ComponentName(applicationContext, clazz))
-                        putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
-                    }
-                    applicationContext.sendBroadcast(intent)
-                }
+                // 直接更新小组件 UI，不发送导致死循环的广播
+                BaseWifiWidget.renderAllWidgets(applicationContext)
+                Result.success()
+            } else {
+                Result.retry()
             }
+        } catch (e: Exception) {
+            Result.failure()
         }
-        return Result.success()
     }
 }

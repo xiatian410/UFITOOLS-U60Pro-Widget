@@ -1,100 +1,350 @@
 package com.ufi_toolswidget.widget
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.RemoteViews
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.ufi_toolswidget.R
 import com.ufi_toolswidget.util.SPUtil
+import com.ufi_toolswidget.util.ThemeColors
+import com.ufi_toolswidget.worker.WifiWorker
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-/**
- * 从 SharedPreferences 读取数据的辅助方法
- */
-private fun Context.getWifiSp() = getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
+abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
-abstract class BaseWifiWidget(private val layoutId: Int) : AppWidgetProvider() {
-    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        for (id in appWidgetIds) {
-            val rv = RemoteViews(context.packageName, layoutId)
-            updateViews(context, rv)
-            appWidgetManager.updateAppWidget(id, rv)
+    companion object {
+        private const val TAG = "WifiWidget"
+        const val ACTION_REFRESH = "com.ufi_toolswidget.ACTION_REFRESH"
+
+        fun getWidgetErrorLog(context: Context): String {
+            return context.getSharedPreferences("widget_debug", Context.MODE_PRIVATE)
+                .getString("error_log", "暂无日志") ?: "暂无日志"
+        }
+
+        fun clearWidgetErrorLog(context: Context) {
+            context.getSharedPreferences("widget_debug", Context.MODE_PRIVATE)
+                .edit().putString("error_log", "").apply()
+        }
+
+        fun appendLog(context: Context, msg: String) {
+            try {
+                val sp = context.getSharedPreferences("widget_debug", Context.MODE_PRIVATE)
+                val old = sp.getString("error_log", "") ?: ""
+                val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                val newLog = "[$timestamp] $msg\n$old"
+                sp.edit().putString("error_log", newLog.lines().take(50).joinToString("\n")).apply()
+                Log.d(TAG, msg)
+            } catch (_: Exception) {}
+        }
+
+        fun renderAllWidgets(context: Context) {
+            val appWidgetManager = AppWidgetManager.getInstance(context)
+            val ids = appWidgetManager.getAppWidgetIds(ComponentName(context, WifiWidget4x2::class.java))
+            for (id in ids) {
+                val rv = RemoteViews(context.packageName, R.layout.widget_4x2)
+                performRender(context, rv)
+                applyWidgetTheme(context, rv)
+                setupClick(context, rv, WifiWidget4x2::class.java)
+                appWidgetManager.updateAppWidget(id, rv)
+            }
+        }
+
+        private fun setupClick(context: Context, rv: RemoteViews, clazz: Class<*>) {
+            val intent = Intent(context, clazz).apply { action = ACTION_REFRESH }
+            val pi = PendingIntent.getBroadcast(context, clazz.hashCode(), intent, 
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            // 确保布局中有 id 为 widget_root 的根容器
+            try { rv.setOnClickPendingIntent(R.id.widget_root, pi) } catch (_: Exception) {}
+        }
+
+        private fun performRender(context: Context, rv: RemoteViews) {
+            val sp = context.getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
+
+            val model = sp.getString("model", "--") ?: "--"
+            val deviceModel = sp.getString("device_model", model) ?: model
+            val firmwareVer = sp.getString("firmware_ver", "") ?: ""
+            val flow = sp.getString("flow", "--") ?: "--"
+            val daily = sp.getString("daily_flow", "--") ?: "--"
+            val signal = sp.getString("signal", "--") ?: "--"
+            val temp = sp.getString("temp", "--") ?: "--"
+            val battery = sp.getString("battery", "--") ?: "--"
+            val appVerCode = sp.getString("app_ver_code", "") ?: ""
+            val cpu = sp.getString("cpu", "--") ?: "--"
+            val mem = sp.getString("mem", "--") ?: "--"
+            val netType = sp.getString("net_type", "") ?: ""
+            val batteryCurrent = sp.getString("battery_current", "") ?: ""
+            val internalStorage = sp.getString("internal_storage", "") ?: ""
+            val updateTime = sp.getString("update_time", "--") ?: "--"
+
+            // ===== 第一行：设备头部 + 信号 + 网络类型 + 电量 =====
+            safeSetText(rv, R.id.tv_model, deviceModel.ifEmpty { model })
+            // 固件版本格式：UFI v4.0.0.20260421
+            safeSetText(rv, R.id.tv_version,
+                if (firmwareVer.isNotEmpty()) "UFI v$firmwareVer" else "")
+            // 版本代码，紧跟固件版本后
+            safeSetText(rv, R.id.tv_app_ver_code,
+                if (appVerCode.isNotEmpty()) "build$appVerCode" else "")
+
+            // 信号格数矢量图标
+            val signalLevel = parseSignalLevel(signal)
+            val signalRes = when (signalLevel) {
+                0 -> R.drawable.ic_signal_0
+                1 -> R.drawable.ic_signal_1
+                2 -> R.drawable.ic_signal_2
+                3 -> R.drawable.ic_signal_3
+                4 -> R.drawable.ic_signal_4
+                5 -> R.drawable.ic_signal_5
+                else -> R.drawable.ic_signal_0
+            }
+            safeSetImageResource(rv, R.id.iv_signal_bars, signalRes)
+
+            // 电量矢量图标 (0-4 格)
+            val batteryLevel = parseBatteryLevel(battery)
+            val batteryRes = when (batteryLevel) {
+                0 -> R.drawable.ic_battery_0
+                1 -> R.drawable.ic_battery_1
+                2 -> R.drawable.ic_battery_2
+                3 -> R.drawable.ic_battery_3
+                4 -> R.drawable.ic_battery_4
+                else -> R.drawable.ic_battery_0
+            }
+            safeSetImageResource(rv, R.id.iv_battery, batteryRes)
+
+            // 电量文本
+            safeSetText(rv, R.id.tv_battery, battery)
+
+            // 充电标志：根据电流正负判断，有正值电流显示⚡
+            val isCharging = try {
+                val current = batteryCurrent.replace("mA", "").replace(" ", "").toIntOrNull()
+                (current != null && current > 50)
+            } catch (_: Exception) { false }
+            safeSetText(rv, R.id.tv_charging, if (isCharging) "⚡" else "")
+
+            // ===== 第二行：流量大数字 =====
+            safeSetText(rv, R.id.tv_daily, daily.replace("GB", "").trim())
+            safeSetText(rv, R.id.tv_flow, flow.replace("GB", "").trim())
+
+            // ===== 第三行：温度 + CPU + RAM + 信号质量 =====
+            val tempClean = temp.replace("℃", "°C").replace("C", "°C")
+            safeSetText(rv, R.id.tv_temp, tempClean)
+
+            val cpuClean = cpu.replace("%", "").trim()
+            safeSetText(rv, R.id.tv_cpu, "CPU ${cpuClean}%")
+
+            val memClean = mem.replace("%", "").trim()
+            safeSetText(rv, R.id.tv_mem, "RAM ${memClean}%")
+
+            // ===== 第一行：网络类型 + 信号 dBm 已合并到第三行 =====
+            val networkRes = when {
+                netType.contains("5G", true) -> R.drawable.ic_network_5g
+                netType.contains("4G+", true) || netType.contains("LTE+", true) -> R.drawable.ic_network_4g_plus
+                netType.contains("4G", true) || netType.contains("LTE", true) -> R.drawable.ic_network_4g
+                netType.contains("3G", true) || netType.contains("WCDMA", true) -> R.drawable.ic_network_3g
+                netType.contains("2G", true) || netType.contains("GSM", true) -> R.drawable.ic_network_2g
+                else -> R.drawable.ic_network_4g
+            }
+            safeSetImageResource(rv, R.id.iv_network, networkRes)
+            safeSetText(rv, R.id.tv_signal_dbm, signal)
+
+            // ===== 第四行：时间戳 =====
+            safeSetText(rv, R.id.tv_update_time, updateTime)
+
+            // 显隐设置
+            val showFlow = sp.getBoolean("show_flow", true)
+            val showTemp = sp.getBoolean("show_temp", true)
+            val showModel = sp.getBoolean("show_model", true)
+            val showSignal = sp.getBoolean("show_signal", true)
+            val showBattery = sp.getBoolean("show_battery", true)
+            val showCpu = sp.getBoolean("show_cpu", true)
+            val showMem = sp.getBoolean("show_mem", true)
+            val showTime = sp.getBoolean("show_time", true)
+
+            safeSetVisibility(rv, R.id.tv_model, showModel)
+            safeSetVisibility(rv, R.id.tv_flow, showFlow)
+            safeSetVisibility(rv, R.id.tv_daily, showFlow)
+
+            // 温度
+            safeSetVisibility(rv, R.id.tv_temp, showTemp)
+            safeSetVisibility(rv, R.id.iv_temp, showTemp)
+
+            // 信号
+            safeSetVisibility(rv, R.id.iv_signal_bars, showSignal)
+            safeSetVisibility(rv, R.id.iv_network, showSignal)
+            safeSetVisibility(rv, R.id.tv_signal_dbm, showSignal)
+            safeSetVisibility(rv, R.id.iv_antenna, showSignal)
+
+            // 电池
+            safeSetVisibility(rv, R.id.iv_battery, showBattery)
+            safeSetVisibility(rv, R.id.tv_battery, showBattery)
+            safeSetVisibility(rv, R.id.tv_charging, showBattery)
+
+            // CPU
+            safeSetVisibility(rv, R.id.tv_cpu, showCpu)
+            safeSetVisibility(rv, R.id.iv_cpu, showCpu)
+
+            // 内存
+            safeSetVisibility(rv, R.id.tv_mem, showMem)
+            safeSetVisibility(rv, R.id.iv_chip, showMem)
+
+            // 更新时间
+            safeSetVisibility(rv, R.id.tv_update_time, showTime)
+        }
+
+        /** 从 RSRP dBm 信号值推算 1-5 格信号强度 */
+        private fun parseSignalLevel(signal: String): Int {
+            return try {
+                val rssi = signal.replace("dBm", "").trim().toIntOrNull() ?: 0
+                // RSRP 是负数；>=0 视为无效（如 "null"/"--"）
+                if (rssi >= 0) return 0
+                when {
+                    rssi > -85  -> 5   // 非常好
+                    rssi >= -95 -> 4   // 良好
+                    rssi >= -105 -> 3  // 一般 / 中等
+                    rssi >= -115 -> 2  // 较差
+                    else         -> 1   // 极差
+                }
+            } catch (_: Exception) { 0 }
+        }
+
+        private fun safeSetText(rv: RemoteViews, id: Int, text: String) {
+            try { rv.setTextViewText(id, text) } catch (_: Exception) {}
+        }
+
+        private fun safeSetVisibility(rv: RemoteViews, id: Int, visible: Boolean) {
+            try { rv.setViewVisibility(id, if (visible) View.VISIBLE else View.GONE) } catch (_: Exception) {}
+        }
+
+        private fun safeSetImageResource(rv: RemoteViews, id: Int, resId: Int) {
+            try { rv.setImageViewResource(id, resId) } catch (_: Exception) {}
+        }
+
+        private fun safeSetTextColor(rv: RemoteViews, id: Int, color: Int) {
+            try { rv.setTextColor(id, color) } catch (_: Exception) {}
+        }
+
+        private fun safeSetImageViewTint(rv: RemoteViews, id: Int, color: Int) {
+            try { rv.setInt(id, "setColorFilter", color) } catch (_: Exception) {}
+        }
+
+        /** 根据主题模式设置小组件背景和文字颜色 */
+        private fun applyWidgetTheme(context: Context, rv: RemoteViews) {
+            val isDark = SPUtil.isWidgetDark(context)
+            val themeId = SPUtil.getSp(context).getInt("color_theme", 0)
+            val palette = ThemeColors.getById(context, themeId)
+
+            // 根据浅/深选择色值
+            val accent = if (isDark) palette.accentDark else palette.accentLight
+            val accentSecondary = if (isDark) palette.accentSecondaryDark else palette.accentSecondaryLight
+
+            // 根容器背景 → 使用主题强调色，与主界面主题一致
+            rv.setInt(R.id.widget_root, "setBackgroundColor", accent)
+
+            // 计算 accent 背景上的对比文字色（保证可读性）
+            val accentLuminance = ((accent shr 16 and 0xFF) * 299 + (accent shr 8 and 0xFF) * 587 + (accent and 0xFF) * 114) / 1000
+            val textOnAccent = if (accentLuminance > 150) 0xFF1A1A1A.toInt() else 0xFFFAFAFA.toInt()
+            val textSecondaryOnAccent = if (accentLuminance > 150) 0xFF555555.toInt() else 0xFFBBBBBB.toInt()
+            val dividerOnAccent = if (accentLuminance > 150) 0xFFCCCCCC.toInt() else 0xFF44FFFFFF.toInt()
+
+            // ── 文字色 ──
+            safeSetTextColor(rv, R.id.tv_model, textOnAccent)
+            safeSetTextColor(rv, R.id.tv_version, textSecondaryOnAccent)
+            safeSetTextColor(rv, R.id.tv_app_ver_code, textSecondaryOnAccent)
+            safeSetTextColor(rv, R.id.tv_battery, textOnAccent)
+            safeSetTextColor(rv, R.id.tv_charging, if (isDark) 0xFFFBBF24.toInt() else 0xFFF59E0B.toInt()) // 充电保持语义色
+            safeSetTextColor(rv, R.id.tv_daily, textOnAccent)
+            safeSetTextColor(rv, R.id.tv_flow, textOnAccent)
+            safeSetTextColor(rv, R.id.tv_daily_label, textOnAccent)
+            safeSetTextColor(rv, R.id.tv_flow_label, textOnAccent)
+            safeSetTextColor(rv, R.id.tv_daily_unit, textSecondaryOnAccent)
+            safeSetTextColor(rv, R.id.tv_flow_unit, textSecondaryOnAccent)
+            safeSetTextColor(rv, R.id.tv_temp, if (isDark) 0xFFFB923C.toInt() else 0xFFD9480F.toInt()) // 温度语义色
+            safeSetTextColor(rv, R.id.tv_cpu, textOnAccent)
+            safeSetTextColor(rv, R.id.tv_mem, textSecondaryOnAccent)
+            safeSetTextColor(rv, R.id.tv_signal_dbm, textSecondaryOnAccent)
+            safeSetTextColor(rv, R.id.tv_update_time, textSecondaryOnAccent)
+
+            // ── 分割线 ──
+            rv.setInt(R.id.divider_flow, "setBackgroundColor", dividerOnAccent)
+
+            // ── 图标着色（用对比色保证在 accent 背景上可见）──
+            val generalIconIds = listOf(
+                R.id.iv_router, R.id.iv_signal_bars, R.id.iv_network,
+                R.id.iv_battery, R.id.iv_cpu,
+                R.id.iv_chip, R.id.iv_antenna
+            )
+            generalIconIds.forEach { safeSetImageViewTint(rv, it, textOnAccent) }
+
+            // 温度图标用语义色，与温度文字保持协调
+            val tempColor = if (isDark) 0xFFFB923C.toInt() else 0xFFD9480F.toInt()
+            safeSetImageViewTint(rv, R.id.iv_temp, tempColor)
+        }
+
+        /** 从电量百分比推算 0-4 格电量图标等级 */
+        private fun parseBatteryLevel(battery: String): Int {
+            return try {
+                val pct = battery.replace("%", "").trim().toIntOrNull() ?: 0
+                when {
+                    pct >= 90 -> 4
+                    pct >= 70 -> 3
+                    pct >= 40 -> 2
+                    pct >= 15 -> 1
+                    else -> 0
+                }
+            } catch (_: Exception) { 0 }
         }
     }
 
-    protected open fun updateViews(context: Context, rv: RemoteViews) {
-        val sp = context.getWifiSp()
-        val flow = SPUtil.getFlow(context)
-        val daily = sp.getString("daily_flow", "--") ?: "--"
-        val signal = SPUtil.getSignal(context)
-        val temp = SPUtil.getTemp(context)
-        val battery = sp.getString("battery", "--") ?: "--"
-        val model = sp.getString("model", "F50") ?: "F50"
-        val cpu = sp.getString("cpu", "--") ?: "--"
-        val mem = sp.getString("mem", "--") ?: "--"
-        val netType = sp.getString("net_type", "") ?: ""
-        val appVer = sp.getString("app_ver", "") ?: ""
-        val batteryCurrent = sp.getString("battery_current", "--") ?: "--"
-        val batteryVoltage = sp.getString("battery_voltage", "--") ?: "--"
-        val internalStorage = sp.getString("internal_storage", "--") ?: "--"
-        val clientIp = sp.getString("client_ip", "") ?: ""
-
-        // 通用字段映射
-        safeSetText(rv, R.id.tv_model, model)
-        safeSetText(rv, R.id.tv_flow, flow.replace("GB", "").trim())
-        safeSetText(rv, R.id.tv_daily, daily.replace("GB", "").trim())
-        safeSetText(rv, R.id.tv_signal, signal)
-        safeSetText(rv, R.id.tv_temp, temp)
-        safeSetText(rv, R.id.tv_battery, if (battery.contains("%")) battery else "$battery%")
-        safeSetText(rv, R.id.tv_cpu_mem, cpu)
-        safeSetText(rv, R.id.tv_net_type, netType)
-        safeSetText(rv, R.id.tv_app_ver, "UFI v$appVer")
-        safeSetText(rv, R.id.tv_current, batteryCurrent)
-        safeSetText(rv, R.id.tv_voltage, batteryVoltage)
-        safeSetText(rv, R.id.tv_storage, internalStorage)
-        safeSetText(rv, R.id.tv_client_ip, clientIp)
-
-        // 显示/隐藏控制
-        val showFlow = SPUtil.getShowFlow(context)
-        val showSignal = SPUtil.getShowSignal(context)
-        val showTemp = SPUtil.getShowTemp(context)
-
-        safeSetVisibility(rv, R.id.tv_flow, showFlow)
-        safeSetVisibility(rv, R.id.tv_daily, showFlow)
-        safeSetVisibility(rv, R.id.tv_signal, showSignal)
-        safeSetVisibility(rv, R.id.tv_temp, showTemp)
+    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        for (id in ids) {
+            val rv = RemoteViews(context.packageName, layoutId)
+            performRender(context, rv)
+            applyWidgetTheme(context, rv)
+            setupClick(context, rv, this::class.java)
+            manager.updateAppWidget(id, rv)
+        }
+        triggerWorker(context)
     }
 
-    /** 安全设置文本，避免 ID 不存在时崩溃 */
-    private fun safeSetText(rv: RemoteViews, id: Int, text: CharSequence) {
-        try {
-            rv.setTextViewText(id, text)
-        } catch (_: Exception) {}
+    /** 小组件尺寸变化时自动重绘以适应新尺寸 */
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        manager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle
+    ) {
+        super.onAppWidgetOptionsChanged(context, manager, appWidgetId, newOptions)
+        val newWidth = newOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 248)
+        appendLog(context, "尺寸变化 → ${newWidth}dp，重新渲染")
+        val rv = RemoteViews(context.packageName, layoutId)
+        performRender(context, rv)
+        applyWidgetTheme(context, rv)
+        setupClick(context, rv, this::class.java)
+        manager.updateAppWidget(appWidgetId, rv)
     }
 
-    /** 安全设置可见性 */
-    private fun safeSetVisibility(rv: RemoteViews, id: Int, visible: Boolean) {
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (intent.action == ACTION_REFRESH) {
+            appendLog(context, "点击刷新触发")
+            triggerWorker(context)
+        }
+    }
+
+    private fun triggerWorker(context: Context) {
         try {
-            rv.setViewVisibility(id, if (visible) View.VISIBLE else View.GONE)
+            WorkManager.getInstance(context).enqueue(OneTimeWorkRequestBuilder<WifiWorker>().build())
         } catch (_: Exception) {}
     }
 }
 
-// ======== 常用小组件尺寸 ========
-class WifiWidget2x2 : BaseWifiWidget(R.layout.widget_2x2) {
-    override fun updateViews(context: Context, rv: RemoteViews) {
-        super.updateViews(context, rv)
-    }
-}
-
-class WifiWidget3x2 : BaseWifiWidget(R.layout.widget_3x2) {
-    override fun updateViews(context: Context, rv: RemoteViews) {
-        super.updateViews(context, rv)
-    }
-}
-
-class WifiWidget3x3 : BaseWifiWidget(R.layout.widget_3x3) {
-    override fun updateViews(context: Context, rv: RemoteViews) {
-        super.updateViews(context, rv)
-    }
-}
+class WifiWidget4x2 : BaseWifiWidget(R.layout.widget_4x2)

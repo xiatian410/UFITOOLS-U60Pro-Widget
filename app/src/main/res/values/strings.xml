@@ -1,3 +1,10 @@
 <resources>
-    <string name="app_name">UFITOOLS-Widget</string>
+    <string name="app_name">UFI-TOOLS Widget</string>
+    <string name="add_4x2_widget">添加 4x2 小组件</string>
+    <string name="add_4x2_widget_long">添加 4x2 横向样式小组件</string>
+    <string name="menu_config_modify">配置修改</string>
+    <string name="menu_widget_settings">小组件设置</string>
+    <string name="menu_about">关于</string>
+    <string name="app_theme">软件主题</string>
+    <string name="app_description">UFI-TOOLS Widget 是一款专为 UFI 随身 WiFi 设备打造的桌面监控小组件工具。支持实时查看设备信号、流量、温度、电量等关键信息，通过桌面小组件随时掌握设备运行状态。</string>
 </resources>

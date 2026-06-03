@@ -4,6 +4,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="com.miui.home.permission.ADD_WIDGET_TO_HOME_SCREEN" />
+    <uses-permission android:name="com.oppo.launcher.permission.READ_SETTINGS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT" />
 
     <application
         android:allowBackup="true"
@@ -14,7 +18,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.UFITOOLSWidget"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -24,6 +29,9 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <activity
@@ -31,40 +39,68 @@
             android:label="设备管理后台"
             android:theme="@style/Theme.UFITOOLSWidget" />
 
-        <receiver
-            android:name=".widget.WifiWidget2x2"
+        <activity
+            android:name=".SetupActivity"
+            android:label="初次配置"
+            android:theme="@style/Theme.UFITOOLSWidget" />
+
+        <activity
+            android:name=".SettingsActivity"
+            android:label="设置"
+            android:theme="@style/Theme.UFITOOLSWidget" />
+
+        <activity
+            android:name=".AppSettingsActivity"
+            android:label="软件设置"
+            android:parentActivityName=".SettingsActivity"
+            android:theme="@style/Theme.UFITOOLSWidget" />
+
+        <activity
+            android:name=".ConfigModifyActivity"
+            android:label="配置修改"
+            android:parentActivityName=".SettingsActivity"
+            android:theme="@style/Theme.UFITOOLSWidget" />
+
+        <activity
+            android:name=".WidgetSettingsActivity"
+            android:label="小组件设置"
+            android:parentActivityName=".SettingsActivity"
+            android:theme="@style/Theme.UFITOOLSWidget" />
+
+        <activity
+            android:name=".AboutActivity"
+            android:label="关于"
+            android:parentActivityName=".SettingsActivity"
+            android:theme="@style/Theme.UFITOOLSWidget" />
+
+        <activity
+            android:name=".AddWidgetActivity"
             android:exported="true"
-            android:label="WiFi 状态 (2x2)">
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.UFITOOLSWidget.Transparent">
             <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.CREATE_SHORTCUT" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/widget_2x2_info" />
-        </receiver>
+        </activity>
 
         <receiver
-            android:name=".widget.WifiWidget3x2"
-            android:exported="true"
-            android:label="WiFi 状态 (3x2)">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/widget_3x2_info" />
-        </receiver>
+            android:name=".WidgetAddedReceiver"
+            android:exported="true" />
 
         <receiver
-            android:name=".widget.WifiWidget3x3"
+            android:name=".widget.WifiWidget4x2"
             android:exported="true"
-            android:label="WiFi 状态 (3x3)">
+            android:enabled="true"
+            android:label="UFI 状态 (4x2)">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="com.ufi_toolswidget.ACTION_WIDGET_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/widget_3x3_info" />
+                android:resource="@xml/widget_4x2_info" />
         </receiver>
     </application>
 

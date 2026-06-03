@@ -3,6 +3,7 @@ package com.ufi_toolswidget.util
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.json.JSONObject
@@ -21,12 +22,20 @@ object WifiCrawl {
             val t = System.currentTimeMillis()
             val auth = SPUtil.getAuthToken(context)
 
-            // 1. 获取系统全量信息
-            val baseInfo = fetchApi("/api/baseDeviceInfo", t, auth) ?: return@withContext null
+            // 1. 获取系统全量信息 (需认证) - 它是后续解析的基础，通常先获取
+            val baseInfo = fetchApi("/api/baseDeviceInfo", t, auth, context) ?: return@withContext null
             
-            // 2. 获取信号详细信息 (修正后的参数)
-            val signalPath = "/api/goform/goform_get_cmd_process?is_all=true&cmd=lte_rsrp,Z5g_rsrp,network_type,rssi"
-            val signalInfo = fetchApi(signalPath, t, auth)
+            // 2, 3, 4 并行获取以提高速度
+            val signalDeferred = async { 
+                val signalPath = "/api/goform/goform_get_cmd_process?is_all=true&cmd=lte_rsrp,Z5g_rsrp,network_type,rssi"
+                fetchApi(signalPath, t, auth, context)
+            }
+            val versionDeferred = async { fetchApiNoAuth("/api/version_info", t, context) }
+            val tokenDeferred = async { fetchApiNoAuth("/api/need_token", t, context) }
+
+            val signalInfo = signalDeferred.await()
+            val versionInfo = versionDeferred.await()
+            val tokenInfo = tokenDeferred.await()
 
             // --- 精准解析 ---
             val model = baseInfo.optString("model", "F50")
@@ -42,7 +51,7 @@ object WifiCrawl {
             
             // 如果 baseDeviceInfo 中没有月流量，尝试从 goform 代理获取
             if (monthlyRaw <= 0) {
-                val monthlyInfo = fetchApi("/api/goform/goform_get_cmd_process?is_all=true&cmd=monthly_data", t, auth)
+                val monthlyInfo = fetchApi("/api/goform/goform_get_cmd_process?is_all=true&cmd=monthly_data", t, auth, context)
                 val monthlyFromGoform = extractTrafficBytes(monthlyInfo, "monthly_data", "monthly_tx_bytes", "monthly_rx_bytes", "month_data")
                 if (monthlyFromGoform > 0) {
                     monthlyRaw = monthlyFromGoform
@@ -63,11 +72,20 @@ object WifiCrawl {
 
             // === /api/baseDeviceInfo 新增字段 ===
             val appVer = baseInfo.optString("app_ver", "")
+            val appVerCode = baseInfo.optString("app_ver_code", "")
             val currentNow = baseInfo.optInt("current_now", -1)        // 微安 µA
             val voltageNow = baseInfo.optInt("voltage_now", -1)        // 微伏 µV
             val internalTotal = baseInfo.optLong("internal_total_storage", -1L)
             val internalUsed = baseInfo.optLong("internal_used_storage", -1L)
             val clientIp = baseInfo.optString("client_ip", "")
+
+            // === /api/version_info 字段 ===
+            val deviceModel = versionInfo?.optString("model", "") ?: ""
+            val firmwareVer = versionInfo?.optString("app_ver", "") 
+                ?: versionInfo?.optString("version", "") ?: ""
+
+            // === /api/need_token 字段 ===
+            val needToken = tokenInfo?.optBoolean("need_token", false) ?: false
 
             // 信号解析逻辑
             val netType = signalInfo?.optString("network_type") ?: ""
@@ -87,10 +105,14 @@ object WifiCrawl {
                 mem = String.format(Locale.getDefault(), "%.1f%%", memUsage),
                 netType = netType,
                 appVer = appVer,
+                appVerCode = appVerCode,
                 batteryCurrent = formatCurrent(currentNow),
                 batteryVoltage = formatVoltage(voltageNow),
                 internalStorage = formatStorage(internalTotal, internalUsed),
-                clientIp = clientIp
+                clientIp = clientIp,
+                deviceModel = deviceModel.ifEmpty { model },
+                firmwareVer = firmwareVer,
+                needToken = needToken
             )
         } catch (e: Exception) {
             e.printStackTrace()
@@ -99,12 +121,13 @@ object WifiCrawl {
         }
     }
 
-    private suspend fun fetchApi(path: String, t: Long, auth: String): JSONObject? {
+    private fun fetchApi(path: String, t: Long, auth: String, context: Context): JSONObject? {
         val purePath = if (path.contains("?")) path.substringBefore("?") else path
         val sign = NetUtil.generateKanoSign("GET", purePath, t)
         
+        val baseUrl = SPUtil.getBaseUrl(context).trimEnd('/')
         val req = Request.Builder()
-            .url("${NetUtil.BASE_URL}$path")
+            .url("$baseUrl$path")
             .addHeader("kano-t", t.toString())
             .addHeader("kano-sign", sign)
             .addHeader("Authorization", auth)
@@ -126,63 +149,102 @@ object WifiCrawl {
         }
     }
 
+    /** 无需认证的 API 请求 (version_info / need_token) */
+    private fun fetchApiNoAuth(path: String, t: Long, context: Context): JSONObject? {
+        val sign = NetUtil.generateKanoSign("GET", path, t)
+        val baseUrl = SPUtil.getBaseUrl(context).trimEnd('/')
+        val req = Request.Builder()
+            .url("$baseUrl$path")
+            .addHeader("kano-t", t.toString())
+            .addHeader("kano-sign", sign)
+            .build()
+        return try {
+            val resp = NetUtil.client.newCall(req).execute()
+            val content = resp.body?.string() ?: ""
+            if (resp.isSuccessful && content.isNotEmpty()) {
+                JSONObject(content)
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     /**
-     * 从 JSON 中提取流量字节数，自动适配不同单位和字段名
+     * 从 JSON 中提取流量字节数，自动适配不同单位和字段名。
      * 
-     * 有些固件返回的是 Bytes，有些是 KB，有些是 MB。
-     * 通过数值大小判断单位：>10GB 量级 = Bytes，>10MB 量级 = KB，否则 = MB
+     * 字段名含 "bytes" 的（如 daily_tx_bytes）直接当作 Bytes，不做单位推断。
+     * 其他字段通过数值大小推断单位：
+     *   >= 100 MB 量级 → Bytes（最常见）
+     *   >= 100 KB 量级 → KB
+     *   >= 100 B  量级 → MB
+     *         更小      → GB
+     * 
+     * 阈值采用 100 倍阶跃，避免字节值落入相邻区间导致误判。
      */
     private fun extractTrafficBytes(json: JSONObject?, vararg keys: String): Long {
         if (json == null) return 0L
         
         for (key in keys) {
+            // 字段名含 "bytes" 或以下划线 "_data" 结尾（如 daily_data/monthly_data）
+            // 均直接视作 Bytes 单位，不做数值量级推断
+            val keyLower = key.lowercase()
+            val forceBytes = keyLower.contains("bytes") || keyLower.endsWith("_data")
+            
             // 尝试数字类型字段
             val longVal = json.optLong(key, -1L)
             if (longVal > 0) {
-                // 根据数值大小判断实际单位
-                // 如果 > 10GB (10737418240 bytes)，很可能是 Bytes 单位
-                if (longVal > 10_737_418_240L) {
-                    Log.d(TAG, "  $key=$longVal -> 判断为 Bytes 单位")
+                if (forceBytes) {
+                    Log.d(TAG, "  $key=$longVal -> 字段名含bytes，直接作为 Bytes")
                     return longVal
                 }
-                // 如果 > 10MB (10485760)，很可能是 KB 单位
-                if (longVal > 10_485_760L) {
-                    Log.d(TAG, "  $key=$longVal -> 判断为 KB 单位，转换为 Bytes")
-                    return longVal * 1024L
-                }
-                // 否则可能是 MB 单位
-                if (longVal > 10_240L) {
-                    Log.d(TAG, "  $key=$longVal -> 判断为 MB 单位，转换为 Bytes")
-                    return longVal * 1024L * 1024L
-                }
-                // 数值很小，可能是 GB 单位
-                if (longVal > 0) {
-                    Log.d(TAG, "  $key=$longVal -> 判断为 GB 单位，转换为 Bytes")
-                    return longVal * 1024L * 1024L * 1024L
+                return when {
+                    longVal >= 100_000_000L -> {
+                        Log.d(TAG, "  $key=$longVal -> 判断为 Bytes")
+                        longVal
+                    }
+                    longVal >= 100_000L -> {
+                        Log.d(TAG, "  $key=$longVal -> 判断为 KB，转为 Bytes")
+                        longVal * 1024L
+                    }
+                    longVal >= 100L -> {
+                        Log.d(TAG, "  $key=$longVal -> 判断为 MB，转为 Bytes")
+                        longVal * 1024L * 1024L
+                    }
+                    else -> {
+                        Log.d(TAG, "  $key=$longVal -> 判断为 GB，转为 Bytes")
+                        longVal * 1024L * 1024L * 1024L
+                    }
                 }
             }
             
-            // 尝试字符串类型字段（有些固件返回字符串数字）
+            // 尝试字符串类型字段（有些固件返回字符串数字，如 "1.74"）
             val strVal = json.optString(key, "")
             if (strVal.isNotEmpty() && strVal != "null") {
                 val parsed = strVal.toDoubleOrNull()
                 if (parsed != null && parsed > 0) {
-                    val bytes = parsed.toLong()
-                    if (bytes > 10_737_418_240L) {
-                        Log.d(TAG, "  $key=$strVal(String) -> 判断为 Bytes 单位")
-                        return bytes
+                    if (forceBytes) {
+                        Log.d(TAG, "  $key=$strVal(String) -> 字段名含bytes，直接作为 Bytes")
+                        return parsed.toLong()
                     }
-                    if (bytes > 10_485_760L) {
-                        Log.d(TAG, "  $key=$strVal(String) -> 判断为 KB 单位，转换为 Bytes")
-                        return bytes * 1024L
-                    }
-                    if (bytes > 10_240L) {
-                        Log.d(TAG, "  $key=$strVal(String) -> 判断为 MB 单位，转换为 Bytes")
-                        return bytes * 1024L * 1024L
-                    }
-                    if (bytes > 0) {
-                        Log.d(TAG, "  $key=$strVal(String) -> 判断为 GB 单位，转换为 Bytes")
-                        return bytes * 1024L * 1024L * 1024L
+                    return when {
+                        parsed >= 100_000_000.0 -> {
+                            Log.d(TAG, "  $key=$strVal(String) -> 判断为 Bytes")
+                            parsed.toLong()
+                        }
+                        parsed >= 100_000.0 -> {
+                            Log.d(TAG, "  $key=$strVal(String) -> 判断为 KB，转为 Bytes")
+                            (parsed * 1024.0).toLong()
+                        }
+                        parsed >= 100.0 -> {
+                            Log.d(TAG, "  $key=$strVal(String) -> 判断为 MB，转为 Bytes")
+                            (parsed * 1024.0 * 1024.0).toLong()
+                        }
+                        else -> {
+                            Log.d(TAG, "  $key=$strVal(String) -> 判断为 GB，转为 Bytes")
+                            (parsed * 1024.0 * 1024.0 * 1024.0).toLong()
+                        }
                     }
                 }
             }
@@ -237,8 +299,14 @@ data class WifiEntity(
     val netType: String,
     // === /api/baseDeviceInfo 新增字段 ===
     val appVer: String,           // UFI-TOOLS 版本号
+    val appVerCode: String,       // UFI-TOOLS 版本代码 (如 20260601)
     val batteryCurrent: String,   // 电池电流 (mA)
     val batteryVoltage: String,   // 电池电压 (V)
     val internalStorage: String,  // 内部存储 已用/总容量
-    val clientIp: String          // 设备 IP 地址
+    val clientIp: String,         // 设备 IP 地址
+    // === /api/version_info 字段 ===
+    val deviceModel: String,      // 设备硬件型号 (如 U30 Air)
+    val firmwareVer: String,      // 固件版本
+    // === /api/need_token 字段 ===
+    val needToken: Boolean        // 是否需要登录验证
 )

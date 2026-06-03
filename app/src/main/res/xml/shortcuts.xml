@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="add_widget_4x2"
+        android:enabled="true"
+        android:icon="@drawable/ic_widget_large"
+        android:shortcutShortLabel="@string/add_4x2_widget"
+        android:shortcutLongLabel="@string/add_4x2_widget_long">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetPackage="com.ufi_toolswidget"
+            android:targetClass="com.ufi_toolswidget.AddWidgetActivity">
+            <extra android:name="widget_size" android:value="4x2" />
+        </intent>
+    </shortcut>
+</shortcuts>

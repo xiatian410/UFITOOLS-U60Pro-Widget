@@ -33,22 +33,22 @@ object NetUtil {
         cookieStore["192.168.0.1"] = cookies
     }
 
-    // SHA256 字符串哈希 (返回十六进制字符串)
+    // SHA256 字符串哈希 (返回十六进制字符串，用于 Authorization 等)
     fun sha256(input: String): String {
-        return hashBytesToHex(input.toByteArray(), "SHA-256")
-    }
-
-    // 内部通用哈希：字节 -> 十六进制字符串
-    private fun hashBytesToHex(input: ByteArray, algorithm: String): String {
-        val digest = MessageDigest.getInstance(algorithm)
-        val hash = digest.digest(input)
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(input.toByteArray())
         return hash.joinToString("") { "%02x".format(it) }
     }
 
-    // 内部通用哈希：字节 -> 原始字节
-    private fun hashBytesToBytes(input: ByteArray, algorithm: String): ByteArray {
-        val digest = MessageDigest.getInstance(algorithm)
+    // SHA256 字节哈希 (返回原始字节数组)
+    private fun sha256Bytes(input: ByteArray): ByteArray {
+        val digest = MessageDigest.getInstance("SHA-256")
         return digest.digest(input)
+    }
+
+    // 内部通用哈希：字节 -> 十六进制字符串
+    private fun bytesToHex(bytes: ByteArray): String {
+        return bytes.joinToString("") { "%02x".format(it) }
     }
 
     // HMAC-MD5 运算
@@ -60,23 +60,31 @@ object NetUtil {
     }
 
     /**
-     * 作者文档 v3.1.5 签名核心逻辑
-     * kano-sign = SHA256( SHA256(part1) + SHA256(part2) )
-     * 注意：这里的 '+' 是字节数组的拼接，不是字符串拼接
+     * 严格匹配 UFI-TOOLS (JS) 的签名逻辑：
+     *   HMAC-MD5 → 16 bytes → 二分(各8 bytes)
+     *   → SHA256(part1) + SHA256(part2) = 64 bytes
+     *   → SHA256(64 bytes) → hex
      */
     fun generateKanoSign(method: String, path: String, timestamp: Long): String {
+        // 1. 构造 rawData
         val rawData = "minikano${method.uppercase()}$path$timestamp"
-        val hmac = hmacMd5(rawData, SECRET_KEY)
         
-        // 1. HMAC 二分为 part1 和 part2 (各 8 字节)
-        val part1 = hmac.sliceArray(0 until 8)
-        val part2 = hmac.sliceArray(8 until 16)
+        // 2. HMAC-MD5 加密 → 16 字节
+        val hmacBytes = hmacMd5(rawData, SECRET_KEY)
         
-        // 2. 分别计算 SHA256 原始字节
-        val sha1 = hashBytesToBytes(part1, "SHA-256")
-        val sha2 = hashBytesToBytes(part2, "SHA-256")
+        // 3. 将 HMAC-MD5 的原始字节二分为两部分 (各 8 字节)
+        val mid = hmacBytes.size / 2  // 16 / 2 = 8
+        val part1 = hmacBytes.copyOfRange(0, mid)      // bytes[0..7]
+        val part2 = hmacBytes.copyOfRange(mid, hmacBytes.size) // bytes[8..15]
         
-        // 3. 拼接字节数组并进行最后的 SHA256，返回十六进制字符串
-        return hashBytesToHex(sha1 + sha2, "SHA-256")
+        // 4. 分别对这两段原始字节做 SHA256 (各输出 32 字节)
+        val sha1 = sha256Bytes(part1)
+        val sha2 = sha256Bytes(part2)
+        
+        // 5. 将 sha1 + sha2 的原始字节拼接 (32 + 32 = 64 字节) 并进行最终 SHA256
+        val combined = sha1 + sha2
+        val finalHash = sha256Bytes(combined)
+        
+        return bytesToHex(finalHash)
     }
 }

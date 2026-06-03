@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 底层：深紫→深粉渐变 -->
+    <item>
+        <shape>
+            <gradient
+                android:angle="135"
+                android:startColor="#1A1118"
+                android:centerColor="#1E1620"
+                android:endColor="#2D1B24"
+                android:type="linear" />
+        </shape>
+    </item>
+    <!-- 上层遮罩 -->
+    <item>
+        <shape>
+            <gradient
+                android:angle="270"
+                android:startColor="#0DFFFFFF"
+                android:endColor="#05FFFFFF"
+                android:type="linear" />
+        </shape>
+    </item>
+</layer-list>

@@ -2,6 +2,7 @@ package com.ufi_toolswidget.util
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.res.Configuration
 
 object SPUtil {
     fun getSp(ctx: Context): SharedPreferences {
@@ -9,6 +10,7 @@ object SPUtil {
     }
 
     fun saveData(ctx: Context, data: WifiEntity) {
+        val time = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
         getSp(ctx).edit()
             .putString("flow", data.flow)
             .putString("daily_flow", data.dailyFlow)
@@ -19,47 +21,134 @@ object SPUtil {
             .putString("cpu", data.cpu)
             .putString("mem", data.mem)
             .putString("net_type", data.netType)
-            // 新增字段
             .putString("app_ver", data.appVer)
+            .putString("app_ver_code", data.appVerCode)
             .putString("battery_current", data.batteryCurrent)
             .putString("battery_voltage", data.batteryVoltage)
             .putString("internal_storage", data.internalStorage)
             .putString("client_ip", data.clientIp)
+            .putString("device_model", data.deviceModel)
+            .putString("firmware_ver", data.firmwareVer)
+            .putBoolean("need_token", data.needToken)
+            .putString("update_time", time)
             .apply()
     }
 
-    fun getFlow(ctx: Context) = getSp(ctx).getString("flow", "--") ?: "--"
-    fun getSignal(ctx: Context) = getSp(ctx).getString("signal", "--") ?: "--"
-    fun getTemp(ctx: Context) = getSp(ctx).getString("temp", "--") ?: "--"
-
-    /** 缓存月流量数据（用于 goform API 获取失败时的回退） */
-    fun getCachedMonthlyData(ctx: Context): Long = getSp(ctx).getLong("cached_monthly_data", 0L)
-    fun setCachedMonthlyData(ctx: Context, bytes: Long) {
-        getSp(ctx).edit().putLong("cached_monthly_data", bytes).apply()
-    }
-
-    fun saveAuthToken(ctx: Context, token: String) {
-        getSp(ctx).edit().putString("auth_token", token).apply()
-    }
+    // 认证与配置
+    fun saveRawToken(ctx: Context, token: String) = getSp(ctx).edit().putString("raw_token", token).apply()
+    fun getRawToken(ctx: Context) = getSp(ctx).getString("raw_token", "admin") ?: "admin"
+    fun saveAuthToken(ctx: Context, token: String) = getSp(ctx).edit().putString("auth_token", token).apply()
     fun getAuthToken(ctx: Context) = getSp(ctx).getString("auth_token", "") ?: ""
 
-    fun saveRawToken(ctx: Context, token: String) {
-        getSp(ctx).edit().putString("raw_token", token).apply()
-    }
-    fun getRawToken(ctx: Context) = getSp(ctx).getString("raw_token", "admin") ?: "admin"
+    // 刷新频率 (单位: 分钟)
+    fun setRefreshInterval(ctx: Context, minutes: Int) = getSp(ctx).edit().putInt("refresh_interval", minutes).apply()
+    fun getRefreshInterval(ctx: Context) = getSp(ctx).getInt("refresh_interval", 15)
 
-    fun isFirstRun(ctx: Context) = getSp(ctx).getBoolean("is_first_run", true)
-    fun setFirstRun(ctx: Context, value: Boolean) = getSp(ctx).edit().putBoolean("is_first_run", value).apply()
-
-    fun setWidgetSettings(ctx: Context, flow: Boolean, signal: Boolean, temp: Boolean) {
+    // 显隐设置
+    fun setWidgetSettings(ctx: Context, flow: Boolean, signal: Boolean, temp: Boolean, cpu: Boolean, model: Boolean, time: Boolean) {
         getSp(ctx).edit()
             .putBoolean("show_flow", flow)
             .putBoolean("show_signal", signal)
             .putBoolean("show_temp", temp)
+            .putBoolean("show_cpu", cpu)
+            .putBoolean("show_model", model)
+            .putBoolean("show_time", time)
             .apply()
     }
 
     fun getShowFlow(ctx: Context) = getSp(ctx).getBoolean("show_flow", true)
     fun getShowSignal(ctx: Context) = getSp(ctx).getBoolean("show_signal", true)
     fun getShowTemp(ctx: Context) = getSp(ctx).getBoolean("show_temp", true)
+    fun getShowCpu(ctx: Context) = getSp(ctx).getBoolean("show_cpu", true)
+    fun getShowModel(ctx: Context) = getSp(ctx).getBoolean("show_model", true)
+    fun getShowTime(ctx: Context) = getSp(ctx).getBoolean("show_time", true)
+    fun getShowBattery(ctx: Context) = getSp(ctx).getBoolean("show_battery", true)
+    fun getShowMem(ctx: Context) = getSp(ctx).getBoolean("show_mem", true)
+
+    fun setShowFlow(ctx: Context, show: Boolean) = getSp(ctx).edit().putBoolean("show_flow", show).apply()
+    fun setShowSignal(ctx: Context, show: Boolean) = getSp(ctx).edit().putBoolean("show_signal", show).apply()
+    fun setShowTemp(ctx: Context, show: Boolean) = getSp(ctx).edit().putBoolean("show_temp", show).apply()
+    fun setShowCpu(ctx: Context, show: Boolean) = getSp(ctx).edit().putBoolean("show_cpu", show).apply()
+    fun setShowModel(ctx: Context, show: Boolean) = getSp(ctx).edit().putBoolean("show_model", show).apply()
+    fun setShowTime(ctx: Context, show: Boolean) = getSp(ctx).edit().putBoolean("show_time", show).apply()
+    fun setShowBattery(ctx: Context, show: Boolean) = getSp(ctx).edit().putBoolean("show_battery", show).apply()
+    fun setShowMem(ctx: Context, show: Boolean) = getSp(ctx).edit().putBoolean("show_mem", show).apply()
+
+    /** 统计已启用的显示项数量 */
+    fun getEnabledCount(ctx: Context): Int {
+        var count = 0
+        if (getShowFlow(ctx)) count++
+        if (getShowSignal(ctx)) count++
+        if (getShowTemp(ctx)) count++
+        if (getShowCpu(ctx)) count++
+        if (getShowModel(ctx)) count++
+        if (getShowTime(ctx)) count++
+        if (getShowBattery(ctx)) count++
+        if (getShowMem(ctx)) count++
+        return count
+    }
+    
+    fun getCachedMonthlyData(ctx: Context): Long = getSp(ctx).getLong("cached_monthly_data", 0L)
+    fun setCachedMonthlyData(ctx: Context, bytes: Long) = getSp(ctx).edit().putLong("cached_monthly_data", bytes).apply()
+
+    fun isFirstRun(ctx: Context) = getSp(ctx).getBoolean("is_first_run", true)
+    fun setFirstRun(ctx: Context, value: Boolean) = getSp(ctx).edit().putBoolean("is_first_run", value).apply()
+
+    // 后台地址（默认 http://192.168.0.1:2333/）
+    fun getBaseUrl(ctx: Context): String {
+        return getSp(ctx).getString("base_url", "http://192.168.0.1:2333/") ?: "http://192.168.0.1:2333/"
+    }
+    fun setBaseUrl(ctx: Context, url: String) {
+        var u = url.trim()
+        if (u.isNotEmpty() && !u.endsWith("/")) u += "/"
+        getSp(ctx).edit().putString("base_url", u).apply()
+    }
+
+    // ==================== 主题模式 ====================
+    // app_theme: "system" (默认/跟随设备), "light", "dark"
+    // widget_theme: "follow_app" (默认/跟随应用), "light", "dark"
+
+    fun getAppTheme(ctx: Context) = getSp(ctx).getString("app_theme", "system") ?: "system"
+    fun setAppTheme(ctx: Context, mode: String) = getSp(ctx).edit().putString("app_theme", mode).apply()
+
+    fun getWidgetTheme(ctx: Context) = getSp(ctx).getString("widget_theme", "follow_app") ?: "follow_app"
+    fun setWidgetTheme(ctx: Context, mode: String) = getSp(ctx).edit().putString("widget_theme", mode).apply()
+
+    /** 判断小组件当前是否应使用暗色模式 */
+    fun isWidgetDark(ctx: Context): Boolean {
+        return when (getWidgetTheme(ctx)) {
+            "light" -> false
+            "dark" -> true
+            else -> { // follow_app
+                when (getAppTheme(ctx)) {
+                    "light" -> false
+                    "dark" -> true
+                    else -> { // system
+                        val nightMode = ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+                        nightMode == Configuration.UI_MODE_NIGHT_YES
+                    }
+                }
+            }
+        }
+    }
+
+    /** 判断应用当前是否应使用暗色模式（用于 Activity 启动时设置） */
+    fun getNightMode(ctx: Context): Int {
+        return when (getAppTheme(ctx)) {
+            "light" -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+            "dark" -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+            else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+    }
+
+    // ==================== 自定义颜色主题 ====================
+    // color_theme = -1 表示使用自定义颜色
+    fun getCustomAccentLight(ctx: Context) = getSp(ctx).getInt("custom_accent_light", 0xFF222222.toInt())
+    fun setCustomAccentLight(ctx: Context, color: Int) = getSp(ctx).edit().putInt("custom_accent_light", color).apply()
+    fun getCustomAccentDark(ctx: Context) = getSp(ctx).getInt("custom_accent_dark", 0xFFCCCCCC.toInt())
+    fun setCustomAccentDark(ctx: Context, color: Int) = getSp(ctx).edit().putInt("custom_accent_dark", color).apply()
+
+    /** 获取当前颜色主题索引（-1 为自定义） */
+    fun getColorThemeIndex(ctx: Context) = getSp(ctx).getInt("color_theme", 0)
+    fun setColorThemeIndex(ctx: Context, index: Int) = getSp(ctx).edit().putInt("color_theme", index).apply()
 }

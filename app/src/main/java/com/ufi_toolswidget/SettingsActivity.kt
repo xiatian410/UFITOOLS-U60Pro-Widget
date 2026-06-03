@@ -1,0 +1,46 @@
+package com.ufi_toolswidget
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import com.ufi_toolswidget.util.BackgroundUtil
+import com.ufi_toolswidget.util.ThemeUtil
+
+class SettingsActivity : AppCompatActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_settings)
+        BackgroundUtil.applyWindowBackground(this)
+        ThemeUtil.applyToSettingsActivity(this)
+
+        // 返回
+        findViewById<android.view.View>(R.id.btn_back).setOnClickListener { finish() }
+
+        // ===== 软件设置 → AppSettingsActivity =====
+        findViewById<android.view.View>(R.id.card_app_settings).setOnClickListener {
+            startActivity(Intent(this, AppSettingsActivity::class.java))
+        }
+
+        // ===== 配置修改 → ConfigModifyActivity =====
+        findViewById<android.view.View>(R.id.card_config_modify).setOnClickListener {
+            startActivity(Intent(this, ConfigModifyActivity::class.java))
+        }
+
+        // ===== 小组件设置 → WidgetSettingsActivity =====
+        findViewById<android.view.View>(R.id.card_widget_settings).setOnClickListener {
+            startActivity(Intent(this, WidgetSettingsActivity::class.java))
+        }
+
+        // ===== 关于 → AboutActivity =====
+        findViewById<android.view.View>(R.id.card_about).setOnClickListener {
+            startActivity(Intent(this, AboutActivity::class.java))
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        BackgroundUtil.applyWindowBackground(this)
+        ThemeUtil.applyToSettingsActivity(this)
+    }
+}
