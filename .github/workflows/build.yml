@@ -8,6 +8,10 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+# 授予 GITHUB_TOKEN 写权限，才能创建 Release 和推送 commit
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build APK
