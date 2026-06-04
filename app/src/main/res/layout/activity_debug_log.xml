@@ -3,7 +3,9 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:background="@color/sakura_bg"
+    android:orientation="vertical"
+    android:fitsSystemWindows="true">
 
     <!-- 顶部栏 -->
     <FrameLayout
@@ -47,122 +49,186 @@
                 android:alpha="0.5"
                 android:textSize="11sp" />
         </LinearLayout>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switch_debug_enabled"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end|center_vertical" />
     </FrameLayout>
 
-    <!-- 操作按钮栏 -->
+    <!-- 操作按钮卡片 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_widget_card"
         android:orientation="horizontal"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="4dp"
+        android:padding="8dp"
         android:gravity="center">
 
-        <com.google.android.material.button.MaterialButton
+        <LinearLayout
             android:id="@+id/btn_refresh_log"
-            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="0dp"
-            android:layout_height="36dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="刷新"
-            android:textSize="11sp"
-            android:textColor="@color/text_main"
-            app:icon="@android:drawable/ic_popup_sync"
-            app:iconSize="16dp"
-            app:iconGravity="textStart"
-            app:iconPadding="4dp" />
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingVertical="8dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@android:drawable/ic_popup_sync"
+                app:tint="@color/text_main" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="刷新"
+                android:textColor="@color/text_main"
+                android:textSize="10sp" />
+        </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
+        <LinearLayout
             android:id="@+id/btn_copy_log"
-            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="0dp"
-            android:layout_height="36dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="复制全部"
-            android:textSize="11sp"
-            android:textColor="@color/text_main"
-            app:icon="@android:drawable/ic_menu_edit"
-            app:iconSize="16dp"
-            app:iconGravity="textStart"
-            app:iconPadding="4dp" />
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingVertical="8dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@android:drawable/ic_menu_edit"
+                app:tint="@color/text_main" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="复制"
+                android:textColor="@color/text_main"
+                android:textSize="10sp" />
+        </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
+        <LinearLayout
             android:id="@+id/btn_dump_state"
-            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="0dp"
-            android:layout_height="36dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="状态快照"
-            android:textSize="11sp"
-            android:textColor="@color/text_main"
-            app:icon="@android:drawable/ic_menu_info_details"
-            app:iconSize="16dp"
-            app:iconGravity="textStart"
-            app:iconPadding="4dp" />
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingVertical="8dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@android:drawable/ic_menu_info_details"
+                app:tint="@color/text_main" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="快照"
+                android:textColor="@color/text_main"
+                android:textSize="10sp" />
+        </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
+        <LinearLayout
             android:id="@+id/btn_share_log"
-            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="0dp"
-            android:layout_height="36dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="分享"
-            android:textSize="11sp"
-            android:textColor="@color/text_main"
-            app:icon="@android:drawable/ic_menu_share"
-            app:iconSize="16dp"
-            app:iconGravity="textStart"
-            app:iconPadding="4dp" />
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingVertical="8dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@android:drawable/ic_menu_share"
+                app:tint="@color/text_main" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="分享"
+                android:textColor="@color/text_main"
+                android:textSize="10sp" />
+        </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
+        <LinearLayout
             android:id="@+id/btn_clear_log"
-            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="0dp"
-            android:layout_height="36dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="清空"
-            android:textSize="11sp"
-            android:textColor="@color/text_main"
-            app:icon="@android:drawable/ic_menu_delete"
-            app:iconSize="16dp"
-            app:iconGravity="textStart"
-            app:iconPadding="4dp" />
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingVertical="8dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@android:drawable/ic_menu_delete"
+                app:tint="@color/text_main" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="清空"
+                android:textColor="@color/text_main"
+                android:textSize="10sp" />
+        </LinearLayout>
     </LinearLayout>
 
-    <!-- 分隔线 -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/text_sub"
-        android:alpha="0.1" />
-
-    <!-- 日志内容区域 -->
-    <ScrollView
-        android:id="@+id/scroll_log"
+    <!-- 日志内容区域卡片 -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:padding="12dp"
-        android:scrollbars="vertical"
-        android:fillViewport="true">
+        android:layout_margin="16dp"
+        android:background="@drawable/bg_widget_card"
+        android:padding="2dp">
 
-        <HorizontalScrollView
+        <ScrollView
+            android:id="@+id/scroll_log"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:scrollbars="horizontal">
+            android:padding="8dp"
+            android:scrollbars="vertical"
+            android:fillViewport="true">
 
-            <TextView
-                android:id="@+id/tv_log_content"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:text="(暂无日志)"
-                android:textColor="@color/text_main"
-                android:textSize="11sp"
-                android:lineSpacingExtra="2dp"
-                android:padding="4dp" />
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scrollbars="horizontal">
 
-        </HorizontalScrollView>
-    </ScrollView>
+                <TextView
+                    android:id="@+id/tv_log_content"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="(暂无日志)"
+                    android:textColor="@color/text_main"
+                    android:textSize="10sp"
+                    android:lineSpacingExtra="2dp"
+                    android:padding="4dp" />
+
+            </HorizontalScrollView>
+        </ScrollView>
+    </FrameLayout>
 
 </LinearLayout>

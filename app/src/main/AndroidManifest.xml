@@ -37,11 +37,6 @@
         </activity>
 
         <activity
-            android:name=".WebViewActivity"
-            android:label="设备管理后台"
-            android:theme="@style/Theme.UFITOOLSWidget" />
-
-        <activity
             android:name=".SetupActivity"
             android:label="初次配置"
             android:theme="@style/Theme.UFITOOLSWidget" />
@@ -75,11 +70,6 @@
             android:parentActivityName=".SettingsActivity"
             android:theme="@style/Theme.UFITOOLSWidget" />
 
-        <activity
-            android:name=".ChangelogActivity"
-            android:label="更新公告"
-            android:parentActivityName=".AboutActivity"
-            android:theme="@style/Theme.UFITOOLSWidget" />
 
         <activity
             android:name=".DebugLogActivity"

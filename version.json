@@ -1,9 +1,10 @@
 {
-  "versionName": "1.0",
+  "versionName": "0.1",
   "versionCode": 1,
-  "tagName": "v1.0",
+  "tagName": "v0.1",
   "apkUrl": "",
   "apkSize": 0,
+  "apkSha256": "",
   "publishedAt": "2026-01-01T00:00:00Z",
   "changelog": "初始版本发布|UFI-TOOLS Widget 桌面监控小组件|支持实时查看设备信号、流量、温度、电量"
 }

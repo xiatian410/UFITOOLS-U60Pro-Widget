@@ -28,6 +28,7 @@ object ThemeUtil {
         val textPrimary = ThemeColors.textPrimary(ctx)
         val textSecondary = ThemeColors.textSecondary(ctx)
         val accent = ThemeColors.accent(ctx)
+        val accentSecondary = ThemeColors.accentSecondary(ctx)
         val cardBg = ThemeColors.cardBg(ctx)
 
         // ── 设备名称（标题级，强调色）──
@@ -36,12 +37,9 @@ object ThemeUtil {
         // ── 版本副标题（注释灰字）──
         activity.findViewById<TextView>(R.id.main_tv_subtitle)?.setTextColor(textSecondary)
 
-        // ── 检查更新按钮 ──
-        activity.findViewById<TextView>(R.id.btn_check_update)?.setTextColor(textPrimary)
-
-        // ── 设置图标按钮 ──
-        val btnSettings = activity.findViewById<MaterialButton>(R.id.btn_settings)
-        btnSettings?.iconTint = ColorStateList.valueOf(accent)
+        // ── 设置入口：图标强调色 + 标签主色 ──
+        activity.findViewById<ImageView>(R.id.btn_settings_icon)?.setColorFilter(accent)
+        activity.findViewById<TextView>(R.id.btn_settings_label)?.setTextColor(textPrimary)
 
         // ── 数据网格标签（信号/温度/CPU/内存） → 注释灰字 ──
         val gridLabels = activity.findViewById<ViewGroup>(R.id.card_network)
@@ -68,66 +66,25 @@ object ThemeUtil {
         if (cardDevice != null) {
             // 卡片背景
             cardDevice.background = makeCardBg(cardBg)
-            // 硬件参数内所有文字
-            applyTextColors(cardDevice, textPrimary, textSecondary)
+            // 硬件参数内所有文字：调深一点，使用 Primary 色
+            applyTextColors(cardDevice, textPrimary, textPrimary) 
+        }
+
+        // ── 检查更新按钮（重构后的容器） ──
+        activity.findViewById<View>(R.id.btn_check_update_text)?.let { v ->
+            v.background = makeCardBg(accent, 12f)
+            if (v is TextView) {
+                v.setTextColor(0xFFFFFFFF.toInt())
+                v.isClickable = false // 确保不拦截父容器触摸
+            }
         }
 
         // ── 数据卡片背景 ──
         activity.findViewById<View>(R.id.card_network)?.background = makeCardBg(cardBg)
-
-        // ── 错误状态覆盖层（与主界面统一主题）──
-        applyErrorStateTheme(activity, textPrimary, textSecondary, accent, cardBg)
-    }
-
-    /** 对错误状态覆盖层应用当前主题色 */
-    private fun applyErrorStateTheme(
-        activity: Activity,
-        textPrimary: Int,
-        textSecondary: Int,
-        accent: Int,
-        cardBg: Int
-    ) {
-        // 错误卡片背景（与主界面卡片一致）
-        activity.findViewById<View>(R.id.error_card)?.background = makeCardBg(cardBg)
-
-        // 错误标题 → 主文字色
-        activity.findViewById<TextView>(R.id.error_title)?.setTextColor(textPrimary)
-
-        // 错误描述 → 副文字色
-        activity.findViewById<TextView>(R.id.error_message)?.setTextColor(textSecondary)
-
-        // 连接目标文字 → 主文字色
-        activity.findViewById<TextView>(R.id.error_target)?.setTextColor(textPrimary)
-
-        // 连接目标图标 → 强调色
-        activity.findViewById<ImageView>(R.id.error_target_icon)?.setColorFilter(accent)
-
-        // 错误图标 → 强调色
-        activity.findViewById<ImageView>(R.id.error_icon)?.setColorFilter(accent)
-
-        // 操作标题 → 主文字色
-        activity.findViewById<TextView>(R.id.error_action_title)?.setTextColor(textPrimary)
-
-        // 分隔线 → 分割线色
-        val divider = ThemeColors.divider(activity)
-        activity.findViewById<View>(R.id.error_divider)?.setBackgroundColor(divider)
-
-        // 重试按钮 → 主文字色 + 强调色图标
-        val btnRetry = activity.findViewById<MaterialButton>(R.id.btn_error_retry)
-        btnRetry?.setTextColor(textPrimary)
-        btnRetry?.iconTint = ColorStateList.valueOf(accent)
-
-        // 配置按钮 → 主文字色 + 副色描边
-        val btnConfig = activity.findViewById<MaterialButton>(R.id.btn_error_config)
-        btnConfig?.setTextColor(textPrimary)
-        btnConfig?.strokeColor = ColorStateList.valueOf(textSecondary)
-
-        // 底部提示 → 副文字色
-        activity.findViewById<TextView>(R.id.error_hint)?.setTextColor(textSecondary)
     }
 
     /**
-     * 对 AppSettingsActivity 布局应用当前主题色（文字 + ToggleGroup + CheckBox）。
+     * 对 AppSettingsActivity 布局应用当前主题色（文字 + 分段控件由 Activity 自行管理）。
      */
     fun applyToAppSettingsActivity(activity: Activity) {
         val ctx = activity
@@ -139,12 +96,11 @@ object ThemeUtil {
         val root = activity.findViewById<ViewGroup>(android.R.id.content)
         applyTextColorsToContainer(root, textPrimary, textSecondary, accent, cardBg)
 
-        // ToggleGroup 按钮描边跟随主题强调色
-        applyToggleGroupTheme(activity.findViewById(R.id.toggle_app_theme), accent, textPrimary)
-
         // "应用" 按钮背景
-        activity.findViewById<MaterialButton>(R.id.btn_apply_custom_color)
-            ?.setBackgroundTintList(ColorStateList.valueOf(accent))
+        activity.findViewById<MaterialButton>(R.id.btn_apply_custom_color)?.apply {
+            backgroundTintList = ColorStateList.valueOf(accent)
+            setTextColor(0xFFFFFFFF.toInt())
+        }
     }
 
     /**
@@ -174,6 +130,20 @@ object ThemeUtil {
 
         val root = activity.findViewById<ViewGroup>(android.R.id.content)
         applySecondaryTextColors(root, textPrimary, textSecondary, accent, cardBg)
+
+        // 统一处理检查更新按钮（如果存在）
+        activity.findViewById<View>(R.id.btn_check_update_text)?.let { v ->
+            v.background = makeCardBg(accent, 12f)
+            if (v is TextView) {
+                v.setTextColor(0xFFFFFFFF.toInt())
+            }
+        }
+
+        // 处理可能的链接文字
+        listOf(R.id.tv_github_link, R.id.tv_thanks_link)
+            .mapNotNull { activity.findViewById<TextView>(it) }
+            .forEach { it.setTextColor(accent) }
+            
     }
 
     /** 对表单类页面（配置修改、初始化设置）应用主题：文字 + TextInputLayout + 保存按钮 */
@@ -183,25 +153,62 @@ object ThemeUtil {
         val textSecondary = ThemeColors.textSecondary(ctx)
         val accent = ThemeColors.accent(ctx)
         val cardBg = ThemeColors.cardBg(ctx)
+        val dividerColor = ThemeColors.divider(ctx)
+        val isDark = ThemeColors.isDark(ctx)
 
         val root = activity.findViewById<ViewGroup>(android.R.id.content)
         applySecondaryTextColors(root, textPrimary, textSecondary, accent, cardBg)
 
-        // 保存按钮
-        activity.findViewById<MaterialButton>(R.id.btn_save)
-            ?.setBackgroundTintList(ColorStateList.valueOf(accent))
-        // 确认按钮（SetupActivity）
-        activity.findViewById<MaterialButton>(R.id.btn_setup_confirm)
-            ?.setBackgroundTintList(ColorStateList.valueOf(accent))
-        // 跳过按钮
-        activity.findViewById<MaterialButton>(R.id.tv_skip)
-            ?.setTextColor(textSecondary)
+        // 统一处理主要提交按钮（保存配置、初始化开始）
+        listOf(R.id.btn_save_text, R.id.btn_setup_confirm_text)
+            .forEach { id ->
+                activity.findViewById<View>(id)?.let { v ->
+                    v.background = makeCardBg(accent, 12f)
+                    if (v is TextView) {
+                        v.setTextColor(0xFFFFFFFF.toInt())
+                    }
+                }
+            }
 
-        // TextInputLayout 描边
+        // 跳过按钮
+        activity.findViewById<View>(R.id.tv_skip)?.let { v ->
+            if (v is TextView) v.setTextColor(textSecondary)
+        }
+
+        // TextInputLayout 描边 (兼容旧版或其他页面)
         applyTextInputTheme(root, accent, textSecondary)
+
+        // 新式输入框 (FrameLayout + EditText) 背景着色
+        val inputBgColor = if (isDark) 0xFF333333.toInt() else 0xFFF2F2F2.toInt()
+        listOf(R.id.container_device_address, R.id.container_token)
+            .mapNotNull { activity.findViewById<View>(it) }
+            .forEach { it.backgroundTintList = ColorStateList.valueOf(inputBgColor) }
+
+        // EditText Hint 着色
+        val hintColor = ColorStateList.valueOf(textSecondary)
+        listOf(R.id.et_device_address, R.id.et_token)
+            .mapNotNull { activity.findViewById<TextView>(it) }
+            .forEach { (it as? android.widget.EditText)?.setHintTextColor(hintColor) }
+            
+        // 查找并处理分隔线
+        findAndThemeDividers(root, dividerColor)
     }
 
-    /** 对小组件设置页应用主题：文字 + ToggleGroup + CheckBox + TextInputLayout + 保存按钮 */
+    /** 递归查找并处理分隔线（基于 alpha 0.1/0.12 且高度 1dp 的 View） */
+    private fun findAndThemeDividers(root: ViewGroup?, color: Int) {
+        if (root == null) return
+        val density = root.resources.displayMetrics.density
+        for (child in root.children) {
+            if (child is ViewGroup) {
+                findAndThemeDividers(child, color)
+            } else if (child.id == View.NO_ID && child.alpha < 0.2f && child.height <= 2 * density) {
+                // 可能是分隔线
+                child.setBackgroundColor(color)
+            }
+        }
+    }
+
+    /** 对小组件设置页应用主题：文字 + CheckBox + TextInputLayout */
     fun applyToWidgetSettingsPage(activity: Activity) {
         val ctx = activity
         val textPrimary = ThemeColors.textPrimary(ctx)
@@ -211,13 +218,6 @@ object ThemeUtil {
 
         val root = activity.findViewById<ViewGroup>(android.R.id.content)
         applySecondaryTextColors(root, textPrimary, textSecondary, accent, cardBg)
-
-        // 保存按钮
-        activity.findViewById<MaterialButton>(R.id.btn_save)
-            ?.setBackgroundTintList(ColorStateList.valueOf(accent))
-
-        // ToggleGroup
-        applyToggleGroupTheme(activity.findViewById(R.id.toggle_widget_theme), accent, textPrimary)
 
         // CheckBox
         applyCheckBoxesTheme(root, accent, textPrimary)
@@ -280,6 +280,7 @@ object ThemeUtil {
         cardBg: Int
     ) {
         if (root == null) return
+        val density = root.resources.displayMetrics.density
         for (child in root.children) {
             if (child is ViewGroup) {
                 // 判断是否为卡片容器（有背景）
@@ -290,15 +291,21 @@ object ThemeUtil {
                 applyTextColorsToContainer(child, textPrimary, textSecondary, accent, cardBg)
             }
             if (child is TextView) {
-                if (child.textSize > 20f) {
+                if (child.textSize > 20f * density) {
                     child.setTextColor(textPrimary)
-                } else if (child.textSize <= 12f) {
+                } else if (child.textSize <= 12.5f * density) {
                     child.setTextColor(textSecondary)
                 }
             }
             // 图标 ImageView 着色
             if (child is ImageView) {
-                child.setColorFilter(textSecondary)
+                // 跳过大图标（如关于页的应用图标，通常 > 48dp）
+                val isLargeIcon = child.width > 150 || child.height > 150 || child.id == R.id.iv_app_icon
+                if (!isLargeIcon) {
+                    child.setColorFilter(textSecondary)
+                } else {
+                    child.clearColorFilter()
+                }
             }
         }
     }
@@ -315,6 +322,7 @@ object ThemeUtil {
         cardBg: Int
     ) {
         if (root == null) return
+        val density = root.resources.displayMetrics.density
         for (child in root.children) {
             if (child is ViewGroup) {
                 val isCard = child.id != android.R.id.content && child.childCount >= 2
@@ -328,9 +336,9 @@ object ThemeUtil {
             }
             if (child is TextView) {
                 when {
-                    child.textSize > 20f -> child.setTextColor(textPrimary)
-                    child.textSize >= 15f -> child.setTextColor(textPrimary)
-                    child.textSize <= 12f -> child.setTextColor(textSecondary)
+                    child.textSize > 20f * density -> child.setTextColor(textPrimary)
+                    child.textSize >= 14.5f * density -> child.setTextColor(textPrimary)
+                    child.textSize <= 12.5f * density -> child.setTextColor(textSecondary)
                 }
             }
             if (child is ImageView) {
@@ -357,6 +365,7 @@ object ThemeUtil {
         cardBg: Int
     ) {
         if (root == null) return
+        val density = root.resources.displayMetrics.density
         for (child in root.children) {
             if (child is ViewGroup) {
                 // 子卡片容器应用圆角背景
@@ -367,20 +376,37 @@ object ThemeUtil {
                 } catch (_: Exception) {}
                 applySecondaryTextColors(child, textPrimary, textSecondary, accent, cardBg)
             }
-            if (child is TextView && child.id != android.R.id.text1) {
-                // 跳过系统下拉列表项
+            if (child is TextView && child !is android.widget.Button && child.id != android.R.id.text1 && child.id != R.id.btn_check_update_text && child.id != R.id.btn_save_text && child.id != R.id.btn_setup_confirm_text) {
+                // 跳过系统下拉列表项和自定义按钮文字
                 when {
-                    child.textSize > 20f -> child.setTextColor(textPrimary)
-                    child.textSize <= 13f -> child.setTextColor(textSecondary)
+                    child.textSize > 20f * density -> child.setTextColor(textPrimary)
+                    child.textSize <= 13.5f * density -> child.setTextColor(textSecondary)
                     else -> child.setTextColor(textPrimary)
                 }
             }
             if (child is ImageView) {
-                child.setColorFilter(textSecondary)
+                // 跳过大图标（如关于页的应用图标，通常 > 48dp）
+                val isLargeIcon = child.width > 150 || child.height > 150 || child.id == R.id.iv_app_icon
+                if (!isLargeIcon) {
+                    child.setColorFilter(textSecondary)
+                } else {
+                    child.clearColorFilter()
+                }
             }
-            // 返回按钮图标着色
-            if (child is MaterialButton && child.id == R.id.btn_back) {
-                child.iconTint = ColorStateList.valueOf(textPrimary)
+            // 按钮主题应用
+            if (child is android.widget.Button) {
+                val mb = child as? MaterialButton
+                when {
+                    child.id == R.id.btn_back -> {
+                        mb?.iconTint = ColorStateList.valueOf(textPrimary)
+                    }
+                    (mb?.strokeWidth ?: 0) > 0 -> {
+                        // 描边按钮 (OutlinedButton)
+                        child.setTextColor(textPrimary)
+                        mb?.strokeColor = ColorStateList.valueOf(textSecondary)
+                        mb?.iconTint = ColorStateList.valueOf(accent)
+                    }
+                }
             }
         }
     }
@@ -400,8 +426,9 @@ object ThemeUtil {
 
     /** 在 ViewGroup 子树中找到第一个小字 TextView 并着色，找到后返回 true */
     private fun colorFirstLabelInBranch(parent: ViewGroup, color: Int): Boolean {
+        val density = parent.resources.displayMetrics.density
         for (child in parent.children) {
-            if (child is TextView && child.textSize <= 13f) {
+            if (child is TextView && child.textSize <= 14f * density) {
                 child.setTextColor(color)
                 return true
             }
@@ -417,13 +444,14 @@ object ThemeUtil {
      */
     private fun applyTextColors(root: ViewGroup?, textPrimary: Int, textSecondary: Int) {
         if (root == null) return
+        val density = root.resources.displayMetrics.density
         for (child in root.children) {
             if (child is ViewGroup) {
                 applyTextColors(child, textPrimary, textSecondary)
             }
             if (child is TextView) {
                 // 小字 → 辅色，大字 → 主色
-                if (child.textSize <= 13f) {
+                if (child.textSize <= 14f * density) {
                     child.setTextColor(textSecondary)
                 } else {
                     child.setTextColor(textPrimary)
@@ -433,11 +461,11 @@ object ThemeUtil {
     }
 
     /** 创建圆角卡片背景 */
-    private fun makeCardBg(color: Int): GradientDrawable {
+    private fun makeCardBg(color: Int, radius: Float = 16f): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             setColor(color)
-            cornerRadius = 16f
+            cornerRadius = radius
         }
     }
 }

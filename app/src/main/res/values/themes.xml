@@ -26,4 +26,25 @@
         <item name="android:windowIsFloating">true</item>
         <item name="android:backgroundDimEnabled">false</item>
     </style>
+
+    <!-- 弹窗动画：弹性进入 + 收缩退出 -->
+    <style name="DialogAnimationTheme">
+        <item name="android:windowEnterAnimation">@anim/dialog_enter_spring</item>
+        <item name="android:windowExitAnimation">@anim/dialog_exit_shrink</item>
+    </style>
+
+    <!-- 自定义输入框样式：圆角填充式，与卡片风格统一 -->
+    <style name="AppTextInputLayout" parent="Widget.Material3.TextInputLayout.FilledBox">
+        <item name="boxCornerRadiusTopStart">10dp</item>
+        <item name="boxCornerRadiusTopEnd">10dp</item>
+        <item name="boxCornerRadiusBottomStart">10dp</item>
+        <item name="boxCornerRadiusBottomEnd">10dp</item>
+        <item name="boxStrokeWidth">1dp</item>
+        <item name="boxStrokeWidthFocused">1.5dp</item>
+        <item name="hintTextAppearance">@style/AppTextInputHint</item>
+    </style>
+
+    <style name="AppTextInputHint" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:textSize">13sp</item>
+    </style>
 </resources>

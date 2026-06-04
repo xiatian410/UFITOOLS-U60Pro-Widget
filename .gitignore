@@ -20,7 +20,7 @@
 .externalNativeBuild
 .cxx
 local.properties
-
+/.codebuddy
 # Android
 /app/release/
 *.apk
@@ -29,6 +29,9 @@ local.properties
 *.keystore
 !gradle/wrapper/gradle-wrapper.jar
 
-# Logs
-build.log
+# Logs / Temp / Debug
 *.log
+build_log.*
+logs/
+*.hprof
+*.tmp

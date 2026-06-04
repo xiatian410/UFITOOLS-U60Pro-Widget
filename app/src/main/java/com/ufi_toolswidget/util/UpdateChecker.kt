@@ -10,7 +10,10 @@ import okhttp3.Callback
 import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONObject
+import java.io.File
+import java.io.FileInputStream
 import java.io.IOException
+import java.security.MessageDigest
 
 /**
  * 通过静态 version.json 文件检查应用更新
@@ -20,12 +23,30 @@ import java.io.IOException
 object UpdateChecker {
 
     // ====== version.json 地址 ======
-    // 方式 1：raw.githubusercontent.com（推荐）
-    private const val VERSION_URL =
-        "https://raw.githubusercontent.com/Asunano/UFITOOLS-Widget/main/version.json"
-    // 方式 2：GitHub Pages（需先开启）
-    // private const val VERSION_URL =
-    //     "https://asunano.github.io/UFITOOLS-Widget/version.json"
+    private const val VERSION_PATH = "Asunano/UFITOOLS-Widget/main/version.json"
+    const val GITHUB_RAW_BASE = "https://raw.githubusercontent.com/"
+    const val MIRROR_PROXY_BASE = "https://v4.gh-proxy.org/https://raw.githubusercontent.com/"
+
+    /** 根据镜像设置构建 version.json URL */
+    fun getVersionUrl(context: Context): String {
+        val mirror = SPUtil.getUpdateMirror(context)
+        return if (mirror == 1) "$MIRROR_PROXY_BASE$VERSION_PATH"
+        else "$GITHUB_RAW_BASE$VERSION_PATH"
+    }
+
+    /** APK 下载链接也走镜像 */
+    fun applyMirrorToUrl(context: Context, url: String): String {
+        if (url.isBlank()) return url
+        val mirror = SPUtil.getUpdateMirror(context)
+        if (mirror == 1 && url.startsWith(GITHUB_RAW_BASE)) {
+            return MIRROR_PROXY_BASE + url.removePrefix(GITHUB_RAW_BASE)
+        }
+        // GitHub Releases 也走镜像
+        if (mirror == 1 && url.startsWith("https://github.com/")) {
+            return "https://v4.gh-proxy.org/$url"
+        }
+        return url
+    }
 
     /**
      * 更新信息
@@ -36,6 +57,7 @@ object UpdateChecker {
         val tagName: String,       // "v1.2.0"
         val apkUrl: String,        // 下载链接
         val apkSize: Long,         // 文件大小（字节）
+        val apkSha256: String,     // APK 文件 SHA256 校验值
         val publishedAt: String,   // 发布时间
         val changelog: String      // 更新日志（用 | 分隔多条）
     )
@@ -72,6 +94,7 @@ object UpdateChecker {
      *   "tagName": "v1.2.0",
      *   "apkUrl": "https://...",
      *   "apkSize": 5242880,
+     *   "apkSha256": "abc123...",
      *   "publishedAt": "2024-01-15T08:00:00Z",
      *   "changelog": "- 修复xx|新增xx|- 优化xx"
      * }
@@ -85,6 +108,7 @@ object UpdateChecker {
                 tagName = obj.optString("tagName", ""),
                 apkUrl = obj.optString("apkUrl", ""),
                 apkSize = obj.optLong("apkSize", 0),
+                apkSha256 = obj.optString("apkSha256", ""),
                 publishedAt = obj.optString("publishedAt", ""),
                 changelog = obj.optString("changelog", "")
             )
@@ -123,8 +147,9 @@ object UpdateChecker {
      *   - (null, errorMsg)   → 网络错误或解析失败
      */
     fun checkUpdate(context: Context, onResult: (UpdateInfo?, String?) -> Unit) {
+        val url = getVersionUrl(context)
         val request = Request.Builder()
-            .url(VERSION_URL)
+            .url(url)
             .cacheControl(CacheControl.FORCE_NETWORK) // 不走缓存，拿最新的
             .build()
 
@@ -160,6 +185,14 @@ object UpdateChecker {
         })
     }
 
+    /** 判断更新失败是否属于网络连接类错误（可用于提示切换镜像源） */
+    fun isNetworkError(error: String): Boolean {
+        return error.contains("网络请求失败") || error.contains("Unable to resolve")
+                || error.contains("timeout") || error.contains("connect")
+                || error.contains("UnknownHost") || error.contains("403")
+                || error.contains("404") || error.contains("5")
+    }
+
     /**
      * 格式化文件大小
      */
@@ -189,5 +222,30 @@ object UpdateChecker {
             val t = isoDate.indexOf('T')
             if (t > 0) isoDate.substring(0, t) else isoDate
         } catch (_: Exception) { isoDate }
+    }
+
+    /**
+     * 校验下载文件的 SHA256
+     *
+     * @param file 下载的 APK 文件
+     * @param expectedSha256 version.json 中记录的 SHA256（小写十六进制）
+     * @return true 表示校验通过
+     */
+    fun verifySha256(file: File, expectedSha256: String): Boolean {
+        if (expectedSha256.isBlank()) return true // 未提供校验值时跳过
+        return try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            FileInputStream(file).use { fis ->
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                while (fis.read(buffer).also { bytesRead = it } != -1) {
+                    digest.update(buffer, 0, bytesRead)
+                }
+            }
+            val actual = digest.digest().joinToString("") { "%02x".format(it) }
+            actual.equals(expectedSha256, ignoreCase = true)
+        } catch (_: Exception) {
+            false
+        }
     }
 }

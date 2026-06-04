@@ -92,18 +92,18 @@ class WifiWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         val ctx = applicationContext
         val sp = ctx.getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
 
-        val ip = SPUtil.getDeviceIp(ctx)
-        val port = SPUtil.getDevicePort(ctx).toIntOrNull() ?: 2333
+        val host = SPUtil.getDeviceHost(ctx)
+        val port = SPUtil.getDevicePortInt(ctx)
 
         val prevStopped = sp.getBoolean(KEY_WORKER_STOPPED, false)
         val prevApiFails = sp.getInt(KEY_API_FAILURE_COUNT, 0)
         val prevNetFails = sp.getInt(KEY_NETWORK_FAILURE_COUNT, 0)
-        DebugLogger.d(TAG, "doWork() started: ip=$ip:$port, prevStopped=$prevStopped, apiFails=$prevApiFails, netFails=$prevNetFails")
+        DebugLogger.d(TAG, "doWork() started: addr=$host:$port, prevStopped=$prevStopped, apiFails=$prevApiFails, netFails=$prevNetFails")
 
         // ====== 步骤 1：每次运行都先 ping 检测网络可达性 ======
         // 即使之前被 stopped，也要尝试 ping — 这样设备恢复后能自动感知
-        val pingOk = pingDevice(ip, port)
-        DebugLogger.d(TAG, "doWork: ping $ip:$port = $pingOk")
+        val pingOk = pingDevice(host, port)
+        DebugLogger.d(TAG, "doWork: ping $host:$port = $pingOk")
 
         if (!pingOk) {
             // 网络不通

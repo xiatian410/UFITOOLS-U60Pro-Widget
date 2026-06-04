@@ -8,21 +8,55 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
-# 授予 GITHUB_TOKEN 写权限，才能创建 Release 和推送 commit
 permissions:
   contents: write
 
+# ============================================================
+# Gradle 全局调优
+#   daemon=false  → CI 环境无需留守护进程
+#   parallel=true → 开启并行模块构建
+#   caching=true  → 开启本地构建缓存（配合 --build-cache）
+#   org.gradle.jvmargs  → CI Runner 有 7GB，分配 3GB 给 Gradle
+# ============================================================
+env:
+  GRADLE_OPTS: >-
+    -Dorg.gradle.daemon=false
+    -Dorg.gradle.parallel=true
+    -Dorg.gradle.caching=true
+    -Dorg.gradle.jvmargs=-Xmx3072m -XX:+UseParallelGC -XX:MaxMetaspaceSize=512m
+
 jobs:
-  build:
-    name: Build APK
+  # ============================================================
+  # Preflight：检查环境变量（keystore 是否配置）
+  # 输出 has_keystore 供后续 Job 判断
+  # ============================================================
+  preflight:
+    name: Preflight
     runs-on: ubuntu-latest
-
-    env:
-      HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
-
+    outputs:
+      has_keystore: ${{ steps.check.outputs.KEYSTORE == 'yes' }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - id: check
+        run: |
+          if [ -n "$KS" ]; then
+            echo "KEYSTORE=yes" >> $GITHUB_OUTPUT
+            echo "keystore detected"
+          else
+            echo "KEYSTORE=no" >> $GITHUB_OUTPUT
+            echo "keystore not configured"
+          fi
+        env:
+          KS: ${{ secrets.KEYSTORE_BASE64 }}
+
+  # ============================================================
+  # Debug 构建（总是执行，PR / push 都跑）
+  # ============================================================
+  build-debug:
+    name: Build Debug
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -30,92 +64,176 @@ jobs:
           java-version: "21"
           distribution: "temurin"
 
+      # ---- Gradle 依赖缓存 ----
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/*.gradle', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/*.gradle', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+            gradle-${{ runner.os }}-
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # 解码 keystore（仅当 secrets 存在时）
-      - name: Decode keystore
-        if: ${{ env.HAS_KEYSTORE == 'true' }}
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/UFITOOLS-Widget.jks
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace --build-cache --parallel
 
-      # 构建签名 Release APK
-      - name: Build release APK (signed)
-        if: ${{ env.HAS_KEYSTORE == 'true' }}
-        run: ./gradlew assembleRelease --stacktrace
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+  # ============================================================
+  # Release 构建（仅 tag push，与 debug 并行跑）
+  # 条件已提至 Job 级，无需在 step 中重复判断
+  # ============================================================
+  build-release:
+    name: Build Release
+    needs: preflight
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    env:
+      HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
+    outputs:
+      sha256: ${{ steps.sha256.outputs.hash }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      # ---- Gradle 依赖缓存（与 debug 共用 key）----
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/*.gradle', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/*.gradle', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+            gradle-${{ runner.os }}-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/UFITOOLS-Widget.jks
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --stacktrace --build-cache --parallel
         env:
           SIGNING_STORE_FILE: UFITOOLS-Widget.jks
           SIGNING_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # 无签名时构建 unsigned APK
-      - name: Build release APK (unsigned)
-        if: ${{ env.HAS_KEYSTORE != 'true' }}
-        run: ./gradlew assembleRelease --stacktrace
-
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
-
-      # 重命名签名 APK
-      - name: Rename signed APK
-        if: ${{ env.HAS_KEYSTORE == 'true' }}
+      - name: Rename Signed APK
         run: |
           cp app/build/outputs/apk/release/app-release.apk \
              app/build/outputs/apk/release/UFITOOLS-Widget-${{ github.ref_name }}.apk
 
-      # 上传构建产物
-      - name: Upload artifacts
+      - name: Calculate SHA256
+        id: sha256
+        run: |
+          SHA256=$(sha256sum app/build/outputs/apk/release/UFITOOLS-Widget-${{ github.ref_name }}.apk | cut -d' ' -f1)
+          echo "hash=$SHA256" >> $GITHUB_OUTPUT
+          echo "SHA256: $SHA256"
+
+      - name: Upload Release APKs
         uses: actions/upload-artifact@v4
         with:
-          name: apks
+          name: release-apks
           path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/release/UFITOOLS-Widget-${{ github.ref_name }}.apk
+            app/build/outputs/apk/release/app-release.apk
           retention-days: 30
 
-      # 自动发布 Release（仅 tag push + 有签名时）
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_KEYSTORE == 'true'
+  # ============================================================
+  # 发布 Release（仅 tag push + keystore 可用）
+  # 依赖 debug & release 构建全部完成
+  # ============================================================
+  publish-release:
+    name: Publish Release
+    needs: [preflight, build-debug, build-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') && needs.preflight.outputs.has_keystore == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 需要完整 Git 历史来生成 changelog
+
+      # ---- 下载两个构建 Job 的产物 ----
+      - name: Download Debug APK
+        uses: actions/download-artifact@v4
+        with:
+          name: debug-apk
+
+      - name: Download Release APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: release-apks
+          path: release-apks
+
+      # ---- 创建 GitHub Release ----
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "UFITOOLS-Widget ${{ github.ref_name }}"
           generate_release_notes: true
           files: |
-            app/build/outputs/apk/release/UFITOOLS-Widget-${{ github.ref_name }}.apk
-            app/build/outputs/apk/debug/app-debug.apk
+            release-apks/UFITOOLS-Widget-${{ github.ref_name }}.apk
+            app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ===== 自动更新 version.json 和 CHANGELOG.md =====
+      # ---- 生成 version.json + 更新 CHANGELOG.md ----
       - name: Update version.json and CHANGELOG.md
-        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_KEYSTORE == 'true'
         run: |
-          # 从 tag 提取版本号 (去掉 v 前缀)
           TAG="${{ github.ref_name }}"
           VERSION="${TAG#v}"
-
-          # 获取 APK 下载链接
           APK_URL="https://github.com/Asunano/UFITOOLS-Widget/releases/download/${TAG}/UFITOOLS-Widget-${TAG}.apk"
 
-          # 获取 APK 大小
-          APK_SIZE=$(stat -c%s app/build/outputs/apk/release/UFITOOLS-Widget-${TAG}.apk 2>/dev/null || echo "0")
+          APK_SIZE=0
+          APK_FILE="release-apks/UFITOOLS-Widget-${TAG}.apk"
+          if [ -f "$APK_FILE" ]; then
+            APK_SIZE=$(stat --format=%s "$APK_FILE" 2>/dev/null || stat -c%s "$APK_FILE" 2>/dev/null || echo "0")
+          fi
+          echo "APK: $APK_FILE, size: $APK_SIZE bytes"
 
-          # 获取 commit 信息作为更新日志
-          CHANGELOG_RAW=$(git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD 2>/dev/null | head -20)
-          # 转义为 | 分隔的单行 (用于 version.json)
+          APK_SHA256="${{ needs.build-release.outputs.sha256 }}"
+          echo "SHA256: $APK_SHA256"
+
+          # Changelog: 从上一个 tag 到 HEAD 的 commit
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG_RAW=$(git log --pretty=format:"- %s" "${PREV_TAG}..HEAD" 2>/dev/null | head -20)
+          else
+            CHANGELOG_RAW=$(git log --pretty=format:"- %s" --max-count=20)
+          fi
           CHANGELOG_ESC=$(echo "${CHANGELOG_RAW}" | tr '\n' '|' | sed 's/"/\\"/g')
 
           PUBLISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           PUBLISHED_DATE="$(date -u +%Y-%m-%d)"
+          VERSION_CODE=$(git tag -l 'v*' | wc -l | tr -d ' ')
 
-          # ===== 1. 更新 version.json (只保留最新版本) =====
+          # ===== 1. 生成 version.json =====
           jq -n \
             --arg versionName "$VERSION" \
-            --argjson versionCode $(git tag -l 'v*' | wc -l) \
+            --argjson versionCode "$VERSION_CODE" \
             --arg tagName "$TAG" \
             --arg apkUrl "$APK_URL" \
             --argjson apkSize "$APK_SIZE" \
+            --arg apkSha256 "$APK_SHA256" \
             --arg publishedAt "$PUBLISHED_AT" \
             --arg changelog "$CHANGELOG_ESC" \
             '{
@@ -124,24 +242,22 @@ jobs:
               tagName: $tagName,
               apkUrl: $apkUrl,
               apkSize: $apkSize,
+              apkSha256: $apkSha256,
               publishedAt: $publishedAt,
               changelog: $changelog
             }' > version.json
 
-          echo "Generated version.json:"
+          echo "=== Generated version.json ==="
           cat version.json
 
-          # ===== 2. 更新 CHANGELOG.md (在顶部插入新版本) =====
-          # 格式化 changelog 为 Markdown 列表
+          # ===== 2. 更新 CHANGELOG.md =====
           CHANGELOG_MD=$(echo "${CHANGELOG_RAW}" | sed 's/^/- /')
-
           NEW_ENTRY="## v${VERSION} (${PUBLISHED_DATE})
 
           ${CHANGELOG_MD}
           "
 
           if [ -f CHANGELOG.md ]; then
-            # 在标题行之后插入新条目
             HEADER=$(head -1 CHANGELOG.md)
             BODY=$(tail -n +2 CHANGELOG.md)
             echo "${HEADER}" > CHANGELOG.md
@@ -154,16 +270,15 @@ jobs:
             echo "${NEW_ENTRY}" >> CHANGELOG.md
           fi
 
-          echo "Generated CHANGELOG.md:"
+          echo "=== Generated CHANGELOG.md ==="
           cat CHANGELOG.md
 
       - name: Commit version.json and CHANGELOG.md
-        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_KEYSTORE == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add version.json CHANGELOG.md
-          git diff --cached --quiet || git commit -m "chore: update version.json & CHANGELOG.md for ${TAG}"
+          git diff --cached --quiet || git commit -m "chore: update version.json & CHANGELOG.md for ${{ github.ref_name }}"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

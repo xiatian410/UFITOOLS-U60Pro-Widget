@@ -3,4 +3,8 @@
     <external-path
         name="downloads"
         path="Download" />
+    <!-- 允许分享应用私有目录中的文件 (getExternalFilesDir) -->
+    <external-files-path
+        name="external_files"
+        path="." />
 </paths>

@@ -4,29 +4,30 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:clipToPadding="false"
+    android:fitsSystemWindows="true"
     android:scrollbars="none">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
         android:gravity="center_horizontal"
-        android:paddingBottom="48dp">
+        android:orientation="vertical"
+        android:paddingBottom="32dp">
 
         <!-- Header -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="12dp"
-            android:layout_marginTop="12dp">
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="0dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="50dp"
-                android:paddingBottom="30dp">
+                android:paddingTop="24dp"
+                android:paddingBottom="24dp">
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -35,64 +36,66 @@
                     android:textColor="@color/text_main"
                     android:textSize="28sp"
                     android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="UFI-TOOLS Widget"
-                    android:textColor="@color/text_main"
-                    android:alpha="0.55"
-                    android:textSize="13sp" />
             </LinearLayout>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_back"
                 style="@style/Widget.Material3.Button.IconButton"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:layout_gravity="start|top"
-                android:layout_marginTop="12dp"
-                android:layout_marginStart="12dp"
+                android:layout_marginTop="6dp"
                 app:icon="@drawable/ic_arrow_back"
                 app:iconTint="@color/text_main" />
         </FrameLayout>
 
-        <!-- App Icon -->
-        <ImageView
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:layout_marginTop="8dp"
-            android:src="@mipmap/ic_launcher"
-            android:contentDescription="UFI-TOOLS Widget" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="UFI-TOOLS Widget"
-            android:textColor="@color/text_main"
-            android:textSize="22sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/tv_app_version"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="版本 1.0.0"
-            android:textColor="@color/text_main"
-            android:alpha="0.5"
-            android:textSize="14sp" />
-
-        <!-- Description Card -->
+        <!-- App Icon + 版本卡片 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="28dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/bg_widget_card"
+            android:gravity="center"
             android:orientation="vertical"
-            android:padding="24dp">
+            android:padding="28dp">
+
+            <ImageView
+                android:id="@+id/iv_app_icon"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:src="@mipmap/ic_launcher"
+                android:contentDescription="UFI-TOOLS Widget" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="UFI-TOOLS Widget"
+                android:textColor="@color/text_main"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_app_version"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="版本 1.0.0"
+                android:textColor="@color/text_main"
+                android:alpha="0.45"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- 简介 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/bg_widget_card"
+            android:orientation="vertical"
+            android:padding="20dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -105,56 +108,117 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:lineSpacingExtra="6dp"
-                android:text="UFI-TOOLS Widget 是一款专为 UFI 随身 WiFi 设备打造的桌面监控小组件工具。支持实时查看设备信号、流量、温度、电量等关键信息，通过桌面小组件随时掌握设备运行状态。"
+                android:layout_marginTop="10dp"
+                android:lineSpacingExtra="5dp"
+                android:text="UFI-TOOLS Widget 是一款开源的随身 WiFi 桌面监控工具。支持实时查看 4G/5G 信号（含 RSRP/SINR 等）、流量统计、硬件温度、电池状态及存储空间。"
                 android:textColor="@color/text_main"
-                android:alpha="0.75"
-                android:textSize="14sp" />
+                android:alpha="0.7"
+                android:textSize="13sp" />
         </LinearLayout>
 
-        <!-- 检查更新 Card -->
+        <!-- 检查更新（含镜像源选择） -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/bg_widget_card"
             android:orientation="vertical"
-            android:padding="24dp">
+            android:padding="20dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="检查更新"
-                android:textColor="@color/text_main"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <TextView
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="检查并下载最新版本"
-                android:textColor="@color/text_main"
-                android:alpha="0.6"
-                android:textSize="13sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_check_update"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:layout_marginTop="12dp"
-                android:text="检查更新"
-                android:textSize="13sp"
-                app:cornerRadius="20dp" />
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="检查更新"
+                        android:textColor="@color/text_main"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="检查并下载最新版本"
+                        android:textColor="@color/text_main"
+                        android:alpha="0.4"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <!-- 检查更新按钮（重构为与主界面一致的 FrameLayout） -->
+                <FrameLayout
+                    android:id="@+id/btn_check_update"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:clickable="true"
+                    android:focusable="true">
+                    <TextView
+                        android:id="@+id/btn_check_update_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/bg_btn_primary"
+                        android:gravity="center"
+                        android:minWidth="92dp"
+                        android:paddingHorizontal="16dp"
+                        android:text="检查更新"
+                        android:textColor="#FFFFFF"
+                        android:textSize="12sp"
+                        android:clickable="false"
+                        android:focusable="false"
+                        android:duplicateParentState="true" />
+                </FrameLayout>
+            </LinearLayout>
+
+            <!-- 镜像源选择 -->
+            <LinearLayout
+                android:id="@+id/chip_mirror_group"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:layout_marginTop="14dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/chip_mirror_official"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="GitHub 官方"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/chip_mirror_proxy"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="国内镜像"
+                    android:textSize="12sp" />
+            </LinearLayout>
 
             <ProgressBar
                 android:id="@+id/progress_update"
                 style="?android:attr/progressBarStyleSmall"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="10dp"
                 android:visibility="gone" />
 
             <TextView
@@ -165,21 +229,21 @@
                 android:textColor="@color/text_main"
                 android:textSize="13sp"
                 android:visibility="gone" />
-
         </LinearLayout>
 
-        <!-- GitHub Card -->
+        <!-- 开源地址 -->
         <LinearLayout
             android:id="@+id/card_github"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="16dp"
-            android:orientation="vertical"
-            android:padding="24dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/bg_widget_card"
             android:clickable="true"
             android:focusable="true"
-            android:foreground="?attr/selectableItemBackground">
+            android:foreground="?attr/selectableItemBackground"
+            android:orientation="vertical"
+            android:padding="20dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -193,8 +257,47 @@
                 android:id="@+id/tv_github_link"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="8dp"
                 android:text="https://github.com/Asunano/UFITOOLS-Widget"
+                android:textColor="@color/sakura_dark"
+                android:textSize="13sp"
+                android:autoLink="web"
+                android:linksClickable="true" />
+        </LinearLayout>
+
+        <!-- 致谢 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/bg_widget_card"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="致谢"
+                android:textColor="@color/text_main"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="本软件基于 UFI-TOOLS 项目开发，感谢原作者 kanoqwq 的开源贡献。"
+                android:textColor="@color/text_main"
+                android:alpha="0.7"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/tv_thanks_link"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="https://github.com/kanoqwq/UFI-TOOLS"
                 android:textColor="@color/sakura_dark"
                 android:textSize="13sp"
                 android:autoLink="web"
@@ -207,7 +310,7 @@
             android:layout_marginTop="36dp"
             android:text="Made with ❤ for UFI devices"
             android:textColor="@color/text_main"
-            android:alpha="0.35"
+            android:alpha="0.3"
             android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

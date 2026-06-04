@@ -4,77 +4,78 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:clipToPadding="false"
+    android:fitsSystemWindows="true"
     android:scrollbars="none">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingBottom="48dp">
+        android:paddingBottom="32dp">
 
         <!-- Header -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="12dp"
-            android:layout_marginTop="12dp">
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="0dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="50dp"
-                android:paddingBottom="50dp">
+                android:paddingTop="24dp"
+                android:paddingBottom="24dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="配置中心"
                     android:textColor="@color/text_main"
-                    android:textSize="32sp"
+                    android:textSize="28sp"
                     android:textStyle="bold"
-                    android:letterSpacing="0.05" />
+                    android:letterSpacing="0.02" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
+                    android:layout_marginTop="4dp"
                     android:text="定制您的 UFI 监控参数"
                     android:textColor="@color/text_main"
-                    android:alpha="0.6"
-                    android:textSize="14sp" />
+                    android:alpha="0.45"
+                    android:textSize="13sp" />
             </LinearLayout>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_back"
                 style="@style/Widget.Material3.Button.IconButton"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:layout_gravity="start|top"
-                android:layout_marginTop="12dp"
-                android:layout_marginStart="12dp"
+                android:layout_marginTop="6dp"
                 app:icon="@drawable/ic_arrow_back"
                 app:iconTint="@color/text_main" />
         </FrameLayout>
 
-        <!-- ========== 1. 软件设置 ========== -->
+        <!-- ===== 1. 软件设置 ===== -->
         <LinearLayout
             android:id="@+id/card_app_settings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginBottom="14dp"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/bg_widget_card"
             android:clickable="true"
             android:focusable="true"
             android:foreground="?attr/selectableItemBackground"
-            android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:padding="22dp">
+            android:orientation="horizontal"
+            android:padding="18dp">
 
             <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:src="@drawable/ic_settings"
                 app:tint="@color/sakura_dark" />
 
@@ -90,45 +91,46 @@
                     android:layout_height="wrap_content"
                     android:text="软件设置"
                     android:textColor="@color/text_main"
-                    android:textSize="16sp"
+                    android:textSize="15sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="1dp"
                     android:text="应用主题与外观定制"
                     android:textColor="@color/text_main"
-                    android:alpha="0.5"
+                    android:alpha="0.4"
                     android:textSize="12sp" />
             </LinearLayout>
 
             <ImageView
-                android:layout_width="20dp"
-                android:layout_height="20dp"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
                 android:src="@drawable/ic_arrow_back"
                 android:rotation="180"
-                android:alpha="0.35"
+                android:alpha="0.3"
                 app:tint="@color/text_main" />
         </LinearLayout>
 
-        <!-- ========== 2. 配置修改 ========== -->
+        <!-- ===== 2. 配置修改 ===== -->
         <LinearLayout
             android:id="@+id/card_config_modify"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginBottom="14dp"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/bg_widget_card"
             android:clickable="true"
             android:focusable="true"
             android:foreground="?attr/selectableItemBackground"
-            android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:padding="22dp">
+            android:orientation="horizontal"
+            android:padding="18dp">
 
             <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:src="@drawable/ic_router"
                 app:tint="@color/sakura_dark" />
 
@@ -144,45 +146,46 @@
                     android:layout_height="wrap_content"
                     android:text="配置修改"
                     android:textColor="@color/text_main"
-                    android:textSize="16sp"
+                    android:textSize="15sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="API 地址与 Token 认证"
+                    android:layout_marginTop="1dp"
+                    android:text="API 地址与认证"
                     android:textColor="@color/text_main"
-                    android:alpha="0.5"
+                    android:alpha="0.4"
                     android:textSize="12sp" />
             </LinearLayout>
 
             <ImageView
-                android:layout_width="20dp"
-                android:layout_height="20dp"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
                 android:src="@drawable/ic_arrow_back"
                 android:rotation="180"
-                android:alpha="0.35"
+                android:alpha="0.3"
                 app:tint="@color/text_main" />
         </LinearLayout>
 
-        <!-- ========== 3. 小组件设置 ========== -->
+        <!-- ===== 3. 小组件设置 ===== -->
         <LinearLayout
             android:id="@+id/card_widget_settings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginBottom="14dp"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/bg_widget_card"
             android:clickable="true"
             android:focusable="true"
             android:foreground="?attr/selectableItemBackground"
-            android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:padding="22dp">
+            android:orientation="horizontal"
+            android:padding="18dp">
 
             <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:src="@drawable/ic_widget_small"
                 app:tint="@color/sakura_dark" />
 
@@ -198,45 +201,46 @@
                     android:layout_height="wrap_content"
                     android:text="小组件设置"
                     android:textColor="@color/text_main"
-                    android:textSize="16sp"
+                    android:textSize="15sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="1dp"
                     android:text="显示信息、刷新频率与小组件主题"
                     android:textColor="@color/text_main"
-                    android:alpha="0.5"
+                    android:alpha="0.4"
                     android:textSize="12sp" />
             </LinearLayout>
 
             <ImageView
-                android:layout_width="20dp"
-                android:layout_height="20dp"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
                 android:src="@drawable/ic_arrow_back"
                 android:rotation="180"
-                android:alpha="0.35"
+                android:alpha="0.3"
                 app:tint="@color/text_main" />
         </LinearLayout>
 
-        <!-- ========== 4. 关于 ========== -->
+        <!-- ===== 4. 关于 ===== -->
         <LinearLayout
             android:id="@+id/card_about"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginBottom="14dp"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/bg_widget_card"
             android:clickable="true"
             android:focusable="true"
             android:foreground="?attr/selectableItemBackground"
-            android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:padding="22dp">
+            android:orientation="horizontal"
+            android:padding="18dp">
 
             <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:src="@drawable/ic_info"
                 app:tint="@color/sakura_dark" />
 
@@ -252,25 +256,25 @@
                     android:layout_height="wrap_content"
                     android:text="关于"
                     android:textColor="@color/text_main"
-                    android:textSize="16sp"
+                    android:textSize="15sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="1dp"
                     android:text="版本信息与开源地址"
                     android:textColor="@color/text_main"
-                    android:alpha="0.5"
+                    android:alpha="0.4"
                     android:textSize="12sp" />
             </LinearLayout>
 
             <ImageView
-                android:layout_width="20dp"
-                android:layout_height="20dp"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
                 android:src="@drawable/ic_arrow_back"
                 android:rotation="180"
-                android:alpha="0.35"
+                android:alpha="0.3"
                 app:tint="@color/text_main" />
         </LinearLayout>
 

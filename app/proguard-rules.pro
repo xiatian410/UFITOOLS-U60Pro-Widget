@@ -4,10 +4,7 @@
 -keep class okhttp3.** { *; }
 -keep interface okhttp3.** { *; }
 
-# Jsoup
--keep class org.jsoup.** { *; }
-
-# JSpecify annotations (jsoup 依赖)
+# JSpecify annotations
 -dontwarn org.jspecify.annotations.**
 -keep class org.jspecify.annotations.** { *; }
 

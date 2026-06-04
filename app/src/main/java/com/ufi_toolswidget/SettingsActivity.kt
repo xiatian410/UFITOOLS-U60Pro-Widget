@@ -3,6 +3,7 @@ package com.ufi_toolswidget
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
 import com.ufi_toolswidget.util.BackgroundUtil
 import com.ufi_toolswidget.util.ThemeUtil
 
@@ -10,6 +11,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_settings)
         BackgroundUtil.applyWindowBackground(this)
         ThemeUtil.applyToSettingsActivity(this)

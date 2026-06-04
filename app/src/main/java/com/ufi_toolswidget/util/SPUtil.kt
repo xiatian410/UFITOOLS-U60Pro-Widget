@@ -17,6 +17,7 @@ object SPUtil {
             .putString("signal", data.signal)
             .putString("temp", data.temp)
             .putString("battery", data.battery)
+            .putInt("battery_percent", data.batteryPercent)
             .putString("model", data.model)
             .putString("cpu", data.cpu)
             .putString("mem", data.mem)
@@ -26,6 +27,12 @@ object SPUtil {
             .putString("battery_current", data.batteryCurrent)
             .putString("battery_voltage", data.batteryVoltage)
             .putString("internal_storage", data.internalStorage)
+            .putLong("internal_total_storage", data.internalTotalStorage)
+            .putLong("internal_used_storage", data.internalUsedStorage)
+            .putLong("internal_available_storage", data.internalAvailableStorage)
+            .putLong("external_total_storage", data.externalTotalStorage)
+            .putLong("external_used_storage", data.externalUsedStorage)
+            .putLong("external_available_storage", data.externalAvailableStorage)
             .putString("client_ip", data.clientIp)
             .putString("device_model", data.deviceModel)
             .putString("firmware_ver", data.firmwareVer)
@@ -103,82 +110,139 @@ object SPUtil {
     fun getWorkerStopReason(ctx: Context) = getSp(ctx).getString("worker_stop_reason", "") ?: ""
     fun setWorkerStopReason(ctx: Context, reason: String) = getSp(ctx).edit().putString("worker_stop_reason", reason).apply()
 
-    // ==================== 设备连接配置（IP + 端口分离） ====================
-    const val DEFAULT_DEVICE_IP = "192.168.0.1"
-    const val DEFAULT_DEVICE_PORT = "2333"
+    // ==================== 设备连接配置 ====================
+    const val DEFAULT_DEVICE_ADDRESS = "192.168.0.1:2333"
 
-    /** 设备 IP */
-    fun getDeviceIp(ctx: Context): String {
-        return getSp(ctx).getString("device_ip", DEFAULT_DEVICE_IP) ?: DEFAULT_DEVICE_IP
-    }
-    fun setDeviceIp(ctx: Context, ip: String) {
-        val v = ip.trim()
-        getSp(ctx).edit().putString("device_ip", v.ifEmpty { DEFAULT_DEVICE_IP }).apply()
+    /** 获取设备地址（单一字段，支持 IP:端口 或 域名） */
+    fun getDeviceAddress(ctx: Context): String {
+        return getSp(ctx).getString("device_address", null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_DEVICE_ADDRESS
     }
 
-    /** 设备端口 */
-    fun getDevicePort(ctx: Context): String {
-        return getSp(ctx).getString("device_port", DEFAULT_DEVICE_PORT) ?: DEFAULT_DEVICE_PORT
+    /** 保存设备地址（同时重置协议探测结果，下次自动重探） */
+    fun setDeviceAddress(ctx: Context, address: String) {
+        val v = address.trim()
+        getSp(ctx).edit()
+            .putString("device_address", v.ifEmpty { DEFAULT_DEVICE_ADDRESS })
+            .putString("device_protocol", "auto")  // 地址变了，旧探测结果作废
+            .apply()
     }
-    fun setDevicePort(ctx: Context, port: String) {
-        val v = port.trim()
-        getSp(ctx).edit().putString("device_port", v.ifEmpty { DEFAULT_DEVICE_PORT }).apply()
+
+    /** 从地址中提取主机部分（IP 或域名） */
+    fun getDeviceHost(ctx: Context): String {
+        return parseAddress(getDeviceAddress(ctx)).host
+    }
+
+    /** 从地址中提取端口号 */
+    fun getDevicePortInt(ctx: Context): Int {
+        return parseAddress(getDeviceAddress(ctx)).port
+    }
+
+    // ── 协议自动探测缓存 ──
+
+    /** 获取自动探测到的协议（\"auto\" = 未探测 / \"http\" / \"https\"） */
+    fun getDeviceProtocol(ctx: Context): String =
+        getSp(ctx).getString("device_protocol", "auto") ?: "auto"
+
+    /** 保存自动探测到的协议 */
+    fun setDeviceProtocol(ctx: Context, protocol: String) =
+        getSp(ctx).edit().putString("device_protocol", protocol).apply()
+
+    /** 当前地址是否需要协议探测（域名或公网IP，且未显式写协议前缀） */
+    fun needsProtocolProbe(ctx: Context): Boolean {
+        val raw = getDeviceAddress(ctx).trim()
+        if (raw.startsWith("http://") || raw.startsWith("https://")) return false
+        return !isPrivateOrLocalIp(parseAddress(raw).host)
     }
 
     /**
-     * 构建完整 Base URL：http://{ip}:{port}/
-     * 兼容旧版 base_url 字段：若新字段不存在，尝试从旧字段迁移
+     * 构建完整 Base URL：
+     * - 显式协议（http:// 或 https://）→ 直接使用
+     * - 私有 IP → http://
+     * - 域名/公网IP → 查缓存协议；若已探测到则用对应协议，否则默认 http://
      */
     fun buildBaseUrl(ctx: Context): String {
-        val ip = getDeviceIp(ctx)
-        val port = getDevicePort(ctx)
-        return "http://$ip:$port/"
+        val raw = getDeviceAddress(ctx)
+        val (parsedProtocol, host, parsedPort, protocolExplicit, portExplicit) = parseAddress(raw)
+
+        val protocol = if (protocolExplicit) {
+            parsedProtocol
+        } else {
+            val stored = getDeviceProtocol(ctx)
+            if (stored == "auto") parsedProtocol else stored
+        }
+
+        val port = if (portExplicit) {
+            parsedPort
+        } else {
+            when {
+                protocol == "https" -> 443
+                isPrivateOrLocalIp(host) -> 2333
+                else -> 80
+            }
+        }
+
+        return "$protocol://$host:$port/"
     }
 
-    /** 旧版兼容：从完整 URL 字符串读取（已废弃，保留用于迁移） */
-    fun getBaseUrl(ctx: Context): String {
-        // 优先用新字段构建
-        val ip = getSp(ctx).getString("device_ip", null)
-        val port = getSp(ctx).getString("device_port", null)
-        if (ip != null && port != null) {
-            return buildBaseUrl(ctx)
+    // ── 解析工具 ──
+
+    /** 解析地址字符串 → (协议, 主机, 端口, 协议是否显式指定, 端口是否显式指定) */
+    private fun parseAddress(raw: String): AddressParts {
+        val trimmed = raw.trim()
+
+        // 1) 带协议前缀：http://host:port 或 https://host:port
+        val protocolRegex = Regex("^(https?)://([^:/]+)(?::(\\d+))?/?$")
+        protocolRegex.find(trimmed)?.let { m ->
+            val protocol = m.groupValues[1]
+            val host = m.groupValues[2]
+            val portStr = m.groupValues[3]
+            val portExplicit = portStr.isNotEmpty()
+            val port = if (portExplicit) portStr.toInt() else (if (protocol == "https") 443 else 80)
+            return AddressParts(protocol, host, port, protocolExplicit = true, portExplicit = portExplicit)
         }
-        // 兼容旧版 base_url
-        val oldUrl = getSp(ctx).getString("base_url", null)
-        if (oldUrl != null) {
-            // 从旧 URL 解析出 IP 和端口并迁移到新字段
-            migrateFromOldUrl(ctx, oldUrl)
-            return buildBaseUrl(ctx)
+
+        // 2) 无协议：host:port 或 host
+        val hostPortRegex = Regex("^([^:/]+)(?::(\\d+))?$")
+        hostPortRegex.find(trimmed)?.let { m ->
+            val host = m.groupValues[1]
+            val explicitPort = m.groupValues[2].toIntOrNull()
+            val portExplicit = explicitPort != null
+            val (protocol, defaultPort) = resolveProtocol(host, explicitPort)
+            return AddressParts(protocol, host, explicitPort ?: defaultPort, protocolExplicit = false, portExplicit = portExplicit)
         }
-        return "http://$DEFAULT_DEVICE_IP:$DEFAULT_DEVICE_PORT/"
+
+        // 解析失败 → 默认地址
+        return parseAddress(DEFAULT_DEVICE_ADDRESS)
     }
 
-    /** 旧版兼容：保存完整 URL（已废弃，内部转为 IP+端口存储） */
-    fun setBaseUrl(ctx: Context, url: String) {
-        var u = url.trim()
-        if (u.isNotEmpty() && !u.endsWith("/")) u += "/"
-        // 尝试解析 http://ip:port/ 格式
-        val regex = Regex("^https?://([^:/]+)(?::(\\d+))?/?$")
-        val match = regex.find(u)
-        if (match != null) {
-            setDeviceIp(ctx, match.groupValues[1])
-            val port = match.groupValues[2]
-            setDevicePort(ctx, port.ifEmpty { DEFAULT_DEVICE_PORT })
+    /** 根据主机类型决定协议与默认端口（仅用于未探测时的默认值） */
+    private fun resolveProtocol(host: String, explicitPort: Int?): Pair<String, Int> {
+        if (isPrivateOrLocalIp(host)) {
+            return "http" to (explicitPort ?: 2333)
         }
-        // 同时保留旧字段以便兼容
-        getSp(ctx).edit().putString("base_url", u).apply()
+        return "http" to (explicitPort ?: 80)
     }
 
-    /** 从旧版 base_url 迁移到新字段 */
-    private fun migrateFromOldUrl(ctx: Context, url: String) {
-        val regex = Regex("^https?://([^:/]+)(?::(\\d+))?/?$")
-        val match = regex.find(url.trim())
-        if (match != null) {
-            setDeviceIp(ctx, match.groupValues[1])
-            val port = match.groupValues[2]
-            setDevicePort(ctx, port.ifEmpty { DEFAULT_DEVICE_PORT })
-        }
+    /** 判断是否为私有/本地 IP */
+    internal fun isPrivateOrLocalIp(host: String): Boolean {
+        val ipPattern = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""")
+        val m = ipPattern.find(host) ?: return false
+        val o1 = m.groupValues[1].toIntOrNull() ?: return false
+        val o2 = m.groupValues[2].toIntOrNull() ?: return false
+        return o1 == 10 ||
+                o1 == 127 ||
+                (o1 == 172 && o2 in 16..31) ||
+                (o1 == 192 && o2 == 168)
     }
+
+    private data class AddressParts(
+        val protocol: String,
+        val host: String,
+        val port: Int,
+        val protocolExplicit: Boolean = false,
+        val portExplicit: Boolean = false
+    )
 
     // ==================== 主题模式 ====================
     // app_theme: "system" (默认/跟随设备), "light", "dark"
@@ -227,4 +291,13 @@ object SPUtil {
     /** 获取当前颜色主题索引（-1 为自定义） */
     fun getColorThemeIndex(ctx: Context) = getSp(ctx).getInt("color_theme", 0)
     fun setColorThemeIndex(ctx: Context, index: Int) = getSp(ctx).edit().putInt("color_theme", index).apply()
+
+    // ==================== 调试模式 ====================
+    fun getDebugEnabled(ctx: Context) = getSp(ctx).getBoolean("debug_enabled", false)
+    fun setDebugEnabled(ctx: Context, enabled: Boolean) = getSp(ctx).edit().putBoolean("debug_enabled", enabled).apply()
+
+    // ==================== 更新镜像源 ====================
+    // 0 = GitHub 官方，1 = 国内镜像 (gh-proxy)
+    fun getUpdateMirror(ctx: Context) = getSp(ctx).getInt("update_mirror", 0)
+    fun setUpdateMirror(ctx: Context, mirror: Int) = getSp(ctx).edit().putInt("update_mirror", mirror).commit()
 }

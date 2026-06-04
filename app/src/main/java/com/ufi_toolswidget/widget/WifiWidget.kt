@@ -69,6 +69,12 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
         private fun performRender(context: Context, rv: RemoteViews) {
             val sp = context.getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
+            val stopped = com.ufi_toolswidget.worker.WifiWorker.isWorkerStopped(context)
+
+            // ===== 错误状态：隐藏数据区，全屏显示连接失败提示 =====
+            safeSetVisibility(rv, R.id.widget_content, !stopped)
+            safeSetVisibility(rv, R.id.widget_error_overlay, stopped)
+            if (stopped) return
 
             val model = sp.getString("model", "--") ?: "--"
             val deviceModel = sp.getString("device_model", model) ?: model
@@ -250,52 +256,42 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             val themeId = SPUtil.getSp(context).getInt("color_theme", 0)
             val palette = ThemeColors.getById(context, themeId)
 
-            // 根据浅/深选择色值 — 仅用两级文字色
+            // 根据浅/深选择色值
             val pageBg = if (isDark) palette.pageBgDark else palette.pageBgLight
-            val textPrimary = if (isDark) palette.textPrimaryDark else palette.textPrimaryLight
-            val textSecondary = if (isDark) palette.textSecondaryDark else palette.textSecondaryLight
+            val textColor = if (isDark) palette.textSecondaryDark else palette.textSecondaryLight
             val divider = if (isDark) palette.dividerDark else palette.dividerLight
 
             // 根容器背景 → 使用主界面背景色（与主界面主题一致）
             rv.setInt(R.id.widget_root, "setBackgroundColor", pageBg)
 
-            // ── 文字色（两级制：主色 + 副色）──
-            // 主色：核心数据
-            safeSetTextColor(rv, R.id.tv_model, textPrimary)
-            safeSetTextColor(rv, R.id.tv_battery, textPrimary)
-            safeSetTextColor(rv, R.id.tv_daily, textPrimary)
-            safeSetTextColor(rv, R.id.tv_flow, textPrimary)
-            safeSetTextColor(rv, R.id.tv_cpu, textPrimary)
-            safeSetTextColor(rv, R.id.tv_daily_label, textPrimary)
-            safeSetTextColor(rv, R.id.tv_flow_label, textPrimary)
-
-            // 副色：辅助信息
-            safeSetTextColor(rv, R.id.tv_version, textSecondary)
-            safeSetTextColor(rv, R.id.tv_app_ver_code, textSecondary)
-            safeSetTextColor(rv, R.id.tv_daily_unit, textSecondary)
-            safeSetTextColor(rv, R.id.tv_flow_unit, textSecondary)
-            safeSetTextColor(rv, R.id.tv_mem, textSecondary)
-            safeSetTextColor(rv, R.id.tv_signal_dbm, textSecondary)
-            safeSetTextColor(rv, R.id.tv_update_time, textSecondary)
-
-            // 语义色（功能性，仅充电和温度保留）
-            safeSetTextColor(rv, R.id.tv_charging, if (isDark) 0xFFFBBF24.toInt() else 0xFFF59E0B.toInt())
-            safeSetTextColor(rv, R.id.tv_temp, if (isDark) 0xFFFB923C.toInt() else 0xFFD9480F.toInt())
+            // ── 文字色（统一）──
+            for (id in listOf(
+                R.id.tv_model, R.id.tv_version, R.id.tv_app_ver_code,
+                R.id.tv_battery, R.id.tv_charging,
+                R.id.tv_daily, R.id.tv_daily_label, R.id.tv_daily_unit,
+                R.id.tv_flow, R.id.tv_flow_label, R.id.tv_flow_unit,
+                R.id.tv_temp, R.id.tv_cpu, R.id.tv_mem,
+                R.id.tv_signal_dbm, R.id.tv_update_time
+            )) {
+                safeSetTextColor(rv, id, textColor)
+            }
 
             // ── 分割线 ──
             rv.setInt(R.id.divider_flow, "setBackgroundColor", divider)
 
-            // ── 图标着色（统一用副色，不抢文字注意力）──
-            val generalIconIds = listOf(
+            // ── 图标着色（统一）──
+            for (id in listOf(
                 R.id.iv_router, R.id.iv_signal_bars, R.id.iv_network,
-                R.id.iv_battery, R.id.iv_cpu,
-                R.id.iv_chip, R.id.iv_antenna
-            )
-            generalIconIds.forEach { safeSetImageViewTint(rv, it, textSecondary) }
+                R.id.iv_battery, R.id.iv_cpu, R.id.iv_chip,
+                R.id.iv_antenna, R.id.iv_temp
+            )) {
+                safeSetImageViewTint(rv, id, textColor)
+            }
 
-            // 温度图标用语义色
-            val tempColor = if (isDark) 0xFFFB923C.toInt() else 0xFFD9480F.toInt()
-            safeSetImageViewTint(rv, R.id.iv_temp, tempColor)
+            // ── 错误覆盖层着色 ──
+            safeSetImageViewTint(rv, R.id.widget_error_icon, textColor)
+            safeSetTextColor(rv, R.id.widget_error_text, textColor)
+            safeSetTextColor(rv, R.id.widget_error_hint, textColor)
         }
 
         /** 从电量百分比推算 0-4 格电量图标等级 */

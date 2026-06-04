@@ -1,12 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:padding="8dp"
+    android:elevation="6dp"
+    android:outlineProvider="background"
     android:background="@drawable/widget_bg_light">
+
+    <!-- 正常数据内容区 -->
+    <LinearLayout
+        android:id="@+id/widget_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="8dp">
 
     <!-- ========= 第一行：路由器图标 + 设备标识 + 信号 + 电量 ========= -->
     <LinearLayout
@@ -36,8 +44,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="..."
-                android:textColor="#111111"
-                android:textSize="16sp"
+                android:textColor="#777777"
+                android:textSize="12sp"
                 android:textStyle="bold"
                 android:maxLines="1"
                 android:ellipsize="end" />
@@ -100,8 +108,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="2dp"
                 android:text="--"
-                android:textColor="#111111"
-                android:textSize="15sp" />
+                android:textColor="#777777"
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/tv_charging"
@@ -110,7 +118,7 @@
                 android:layout_marginStart="4dp"
                 android:text=""
                 android:textColor="#F59E0B"
-                android:textSize="15sp" />
+                android:textSize="11sp" />
         </LinearLayout>
     </LinearLayout>
 
@@ -243,7 +251,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="2dp"
                 android:text="--"
-                android:textColor="#D9480F"
+                android:textColor="#777777"
                 android:textSize="10sp" />
         </LinearLayout>
 
@@ -267,7 +275,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="2dp"
                 android:text="--"
-                android:textColor="#111111"
+                android:textColor="#777777"
                 android:textSize="10sp" />
         </LinearLayout>
 
@@ -291,7 +299,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="2dp"
                 android:text="--"
-                android:textColor="#555555"
+                android:textColor="#777777"
                 android:textSize="10sp" />
         </LinearLayout>
 
@@ -331,4 +339,45 @@
         android:textColor="#777777"
         android:textSize="10sp" />
 
-</LinearLayout>
+    </LinearLayout>
+    <!-- end of widget_content -->
+
+    <!-- ========= 错误覆盖层：全屏居中显示连接失败 ========= -->
+    <LinearLayout
+        android:id="@+id/widget_error_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:clickable="false">
+
+        <ImageView
+            android:id="@+id/widget_error_icon"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:src="@drawable/ic_router_off"
+            android:scaleType="fitCenter" />
+
+        <TextView
+            android:id="@+id/widget_error_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="设备连接失败"
+            android:textColor="#777777"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_error_hint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="点击重试"
+            android:textColor="#999999"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+</FrameLayout>
