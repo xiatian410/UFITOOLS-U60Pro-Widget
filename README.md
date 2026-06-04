@@ -1,4 +1,4 @@
-# UFITOOLS Widget
+# UFITOOLS-Widget
 
 [![Build APK](https://github.com/Asunano/UFITOOLS-Widget/actions/workflows/build.yml/badge.svg)](https://github.com/Asunano/UFITOOLS-Widget/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
