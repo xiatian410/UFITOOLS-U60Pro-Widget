@@ -2,9 +2,9 @@
   "versionName": "0.1",
   "versionCode": 1,
   "tagName": "v0.1",
-  "apkUrl": "",
-  "apkSize": 0,
-  "apkSha256": "",
-  "publishedAt": "2026-01-01T00:00:00Z",
-  "changelog": "初始版本发布|UFI-TOOLS Widget 桌面监控小组件|支持实时查看设备信号、流量、温度、电量"
+  "apkUrl": "https://github.com/Asunano/UFITOOLS-Widget/releases/download/v0.1/UFITOOLS-Widget-v0.1.apk",
+  "apkSize": 2211155,
+  "apkSha256": "6e34da46607aa6475c03eaf194179ae2c82f19443d1da37fe1376f72125a8000",
+  "publishedAt": "2026-06-04T16:33:31Z",
+  "changelog": "- fix: detached HEAD push & CHANGELOG rewrite|- Merge branch 'main' of https://github.com/Asunano/UFITOOLS-Widget|- chore: prepare v0.1 release|- Update README with feature image and description|- Add files via upload|- Merge branch 'main' of https://github.com/Asunano/UFITOOLS-Widget|- refactor: UI overhaul, CI pipeline, cleanup unused deps|- Add files via upload|- fix: add contents:write permission for GitHub Release creation|- feat: 添加应用内更新检查、调试日志、主题联动、版本管理|- 重构: 统一4x2小组件、主题背景联动、三级导航、快捷方式权限|- fix|- fix|- fix|- Initial commit：UFI随身WiFi小组件源码|- Initial commit|"
 }
