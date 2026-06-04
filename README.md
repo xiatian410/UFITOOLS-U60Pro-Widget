@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 一个 Android 桌面小组件应用，用于实时监控随身 WiFi 设备（如 F50、U30 Air 等）的运行状态。通过设备 HTTP API 获取数据，在手机桌面和主界面仪表盘中直观展示。
-<img width="6666" height="1284" alt="IMG_20260605_001025" src="https://github.com/user-attachments/assets/a1e60299-2180-4f56-9b56-29f43ee8d510" />
+<img width="6666" height="1284" alt="IMG_20260605_001025" src="https://blog.drxian.cn/wp-content/uploads/2026/06/IMG_20260605_001025.jpg" />
 
 ## ✨ 功能特性
 
