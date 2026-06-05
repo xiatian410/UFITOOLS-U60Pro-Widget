@@ -182,12 +182,22 @@ jobs:
           name: release-apks
           path: release-apks
 
+      # ---- 提取 CHANGELOG 作为 Release body ----
+      - name: Extract changelog for release
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION_NUM="${TAG#v}"
+          # 从 CHANGELOG.md 提取当前版本的更新日志
+          awk "/^## v?${VERSION_NUM} /{found=1; next} /^## /{if(found) exit} found" CHANGELOG.md > /tmp/release_body.md
+          echo "=== Release Body ==="
+          cat /tmp/release_body.md
+
       # ---- 创建 GitHub Release ----
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "UFITOOLS-Widget ${{ github.ref_name }}"
-          generate_release_notes: true
+          body_path: /tmp/release_body.md
           files: |
             release-apks/UFITOOLS-Widget-${{ github.ref_name }}.apk
             app-debug.apk
