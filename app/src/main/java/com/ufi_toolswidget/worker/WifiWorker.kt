@@ -92,16 +92,20 @@ class WifiWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
             Log.w(TAG, "Device unreachable ($networkFails/$NETWORK_MAX_FAILURES)")
 
             if (networkFails >= NETWORK_MAX_FAILURES) {
-                // 连续多次网络不通 → 标记 stopped，省电
+                // 连续多次网络不通 → 标记 stopped（UI 展示用），但返回 retry 让 WorkManager 继续调度
+                // 使用 retry 而非 failure：failure 会导致 PeriodicWorkRequest 永久停止，
+                // 用户不开 App 就无法恢复；retry 则下一次调度时 ping 逻辑可自动检测设备恢复。
                 markWorkerStoppedNetwork(ctx)
-                DebugLogger.e(TAG, "doWork: NETWORK threshold reached, setting stopped=true, reason=network")
+                DebugLogger.e(TAG, "doWork: NETWORK threshold reached, setting stopped=true, reason=network (retry)")
                 BaseWifiWidget.renderAllWidgets(ctx)
-                Log.w(TAG, "Network unreachable threshold reached, worker stopped")
-                return@withContext Result.failure()
+                DebugLogger.flushToFile()
+                Log.w(TAG, "Network unreachable threshold reached, worker will retry on next interval")
+                return@withContext Result.retry()
             }
 
             // 还没达到阈值 → 继续重试（WorkManager 下次调度再试）
             // 不清除 API 计数 — 网络问题优先，等网络通了再试 API
+            DebugLogger.flushToFile()
             return@withContext Result.retry()
         }
 
@@ -131,6 +135,7 @@ class WifiWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
                 // 全部成功 → 清除所有失败状态
                 resetFailureState(ctx)
                 DebugLogger.i(TAG, "doWork: API success, all failure states cleared")
+                DebugLogger.flushToFile()
                 BaseWifiWidget.renderAllWidgets(ctx)
                 Log.d(TAG, "Data fetch succeeded, all failure states cleared")
                 return@withContext Result.success()
@@ -146,15 +151,19 @@ class WifiWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         Log.w(TAG, "API fetch failed ($newApiFails/$API_MAX_FAILURES)")
 
         if (newApiFails >= API_MAX_FAILURES) {
-            // 连续 API 失败达到阈值 → 标记 stopped
+            // 连续 API 失败达到阈值 → 标记 stopped（UI 展示用），但返回 retry 让 WorkManager 继续调度
+            // 使用 retry 而非 failure：failure 会导致 PeriodicWorkRequest 永久停止，
+            // 用户不开 App 就无法恢复；retry 则下一次调度时 API 请求可自动重试。
             markWorkerStoppedApi(ctx)
-            DebugLogger.e(TAG, "doWork: API threshold reached, setting stopped=true, reason=api")
+            DebugLogger.e(TAG, "doWork: API threshold reached, setting stopped=true, reason=api (retry)")
+            DebugLogger.flushToFile()
             BaseWifiWidget.renderAllWidgets(ctx)
-            Log.w(TAG, "API failure threshold reached, worker stopped")
-            return@withContext Result.failure()
+            Log.w(TAG, "API failure threshold reached, worker will retry on next interval")
+            return@withContext Result.retry()
         }
 
         // 还有重试配额 → 让 WorkManager 调度下次运行
+        DebugLogger.flushToFile()
         Result.retry()
     }
 }

@@ -1,5 +1,7 @@
 package com.ufi_toolswidget.util
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Process
@@ -23,6 +25,10 @@ class CrashHandler private constructor(val context: Context) : Thread.UncaughtEx
 
         @Volatile
         private var instance: CrashHandler? = null
+
+        /** 重入保护：防止 DebugLogActivity 自身崩溃导致无限循环 */
+        @Volatile
+        private var isCrashHandling = false
 
         fun init(context: Context) {
             if (instance == null) {
@@ -54,6 +60,13 @@ class CrashHandler private constructor(val context: Context) : Thread.UncaughtEx
     }
 
     override fun uncaughtException(thread: Thread, ex: Throwable) {
+        // 重入保护：DebugLogActivity 自身崩溃时避免无限循环
+        if (isCrashHandling) {
+            Process.killProcess(Process.myPid())
+            exitProcess(10)
+            return
+        }
+        isCrashHandling = true
         try {
             // 1. 记录崩溃摘要到 SP (供主界面检测)
             val summary = "${ex::class.java.simpleName}: ${ex.message}"
@@ -74,12 +87,25 @@ class CrashHandler private constructor(val context: Context) : Thread.UncaughtEx
             // 3. 记录崩溃日志到 DebugLogger (如果还能跑的话)
             DebugLogger.logCrash(ex)
             
-            // 4. 启动调试日志页面显示错误 (使用独立进程防止被干掉)
-            val intent = Intent(context, DebugLogActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                putExtra(DebugLogActivity.EXTRA_CRASH_MODE, true)
+            // 4. 通过 AlarmManager 延迟启动日志页面，避免在崩溃进程内触发 ANR 或二次崩溃
+            try {
+                val intent = Intent(context, DebugLogActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    putExtra(DebugLogActivity.EXTRA_CRASH_MODE, true)
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    context, 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                alarmManager.set(
+                    AlarmManager.RTC,
+                    System.currentTimeMillis() + 500,
+                    pendingIntent
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to schedule crash log activity", e)
             }
-            context.startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Error in crash handler", e)
         } finally {

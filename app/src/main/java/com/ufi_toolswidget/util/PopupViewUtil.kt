@@ -2,6 +2,7 @@ package com.ufi_toolswidget.util
 
 import android.app.Dialog
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
@@ -11,11 +12,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatDelegate
+import com.google.android.material.button.MaterialButton
 import com.ufi_toolswidget.R
 
 /**
@@ -175,16 +178,19 @@ object PopupViewUtil {
             setLineSpacing(0f, 1.2f)
         })
 
-        dialog.findViewById<com.google.android.material.button.MaterialButton>(R.id.common_dialog_btn_primary).apply {
+        dialog.findViewById<MaterialButton>(R.id.common_dialog_btn_primary).apply {
             text = primaryBtnText
-            if (isWarning) setBackgroundColor(warnColor)
+            if (isWarning) {
+                backgroundTintList = ColorStateList.valueOf(warnColor)
+                setTextColor(0xFFFFFFFF.toInt())
+            }
             setOnClickListener {
                 onConfirm()
                 dialog.dismiss()
             }
         }
 
-        dialog.findViewById<com.google.android.material.button.MaterialButton>(R.id.common_dialog_btn_secondary).apply {
+        dialog.findViewById<MaterialButton>(R.id.common_dialog_btn_secondary).apply {
             visibility = View.VISIBLE
             text = secondaryBtnText
             setOnClickListener { dialog.dismiss() }
@@ -315,6 +321,56 @@ object PopupViewUtil {
         // 递归处理标题颜色
         dialog.findViewById<TextView>(R.id.common_dialog_title)?.setTextColor(textPrimary)
         dialog.findViewById<ImageView>(R.id.common_dialog_icon)?.setColorFilter(ThemeColors.iconTint(context))
+
+        // 递归着色弹窗视图树：文字、图标、按钮
+        applyThemeToViewTree(root, context)
+    }
+
+    /**
+     * 递归遍历弹窗视图树，统一着色（主题适配）。
+     * 跳过 content 动态容器（由调用方按需填充）。
+     */
+    private fun applyThemeToViewTree(view: View?, context: Context) {
+        if (view == null) return
+        val textPrimary = ThemeColors.textPrimary(context)
+        val textSecondary = ThemeColors.textSecondary(context)
+        val accent = ThemeColors.accent(context)
+        val iconTint = ThemeColors.iconTint(context)
+        val btnBg = ThemeColors.btnBg(context)
+
+        if (view is ViewGroup && view.id != R.id.common_dialog_content) {
+            for (i in 0 until view.childCount) {
+                applyThemeToViewTree(view.getChildAt(i), context)
+            }
+        }
+        when (view) {
+            is MaterialButton -> {
+                if ((view.strokeWidth ?: 0) > 0) {
+                    // 描边按钮（次要操作）
+                    view.setTextColor(textPrimary)
+                    view.strokeColor = ColorStateList.valueOf(textSecondary)
+                    view.iconTint = ColorStateList.valueOf(iconTint)
+                } else {
+                    // 实色按钮（主要操作）
+                    view.backgroundTintList = ColorStateList.valueOf(btnBg)
+                    view.setTextColor(0xFFFFFFFF.toInt())
+                    view.iconTint = ColorStateList.valueOf(0xFFFFFFFF.toInt())
+                }
+                view.textSize = 14f
+            }
+            is Button -> {
+                view.backgroundTintList = ColorStateList.valueOf(btnBg)
+                view.setTextColor(0xFFFFFFFF.toInt())
+            }
+            is TextView -> {
+                if (view.id == R.id.common_dialog_btn_primary) return  // 按钮文字已独立处理
+                if (view.textSize <= 13f) view.setTextColor(textSecondary)
+                else view.setTextColor(textPrimary)
+            }
+            is ImageView -> {
+                view.setColorFilter(iconTint)
+            }
+        }
     }
 
     private fun dp2px(context: Context, dp: Int): Int = (dp * context.resources.displayMetrics.density).toInt()

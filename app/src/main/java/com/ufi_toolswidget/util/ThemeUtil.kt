@@ -489,7 +489,8 @@ object ThemeUtil {
 
     /**
      * 对卡片列表布局（SettingsActivity）应用主题色。
-     * 特点：卡片容器有 heading + description + 后箭头图标
+     * 特点：卡片容器有 heading + description + 后箭头图标。
+     * 与 applySecondaryTextColors 对齐：图标用 iconTint、文字全覆盖。
      */
     private fun applyCardListTheme(
         root: ViewGroup?,
@@ -515,17 +516,16 @@ object ThemeUtil {
             if (child is TextView) {
                 when {
                     child.textSize > 20f * density -> child.setTextColor(textPrimary)
-                    child.textSize >= 14.5f * density -> child.setTextColor(textPrimary)
-                    child.textSize <= 12.5f * density -> child.setTextColor(textSecondary)
+                    child.textSize > 13.6f * density -> child.setTextColor(textPrimary)
+                    else -> child.setTextColor(textSecondary)
                 }
             }
             if (child is ImageView) {
-                // 卡片左边的功能图标用强调色，右边箭头用次要色
-                // 简单判断：有 rotation=180 的是箭头
+                // 卡片左边的功能图标用 iconTint，右边箭头用次要色
                 if (child.rotation == 180f || child.alpha < 0.5f) {
                     child.setColorFilter(textSecondary)
                 } else {
-                    child.setColorFilter(accent)
+                    child.setColorFilter(iconTint)
                 }
             }
             // 返回按钮图标着色

@@ -12,10 +12,10 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.TextView
 import java.io.File
+import java.io.FileWriter
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.text.SimpleDateFormat
-import java.util.Collections
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -36,6 +36,12 @@ object DebugLogger {
     private const val TAG = "DebugLogger"
     private const val MAX_ENTRIES = 800
 
+    // ── 预编译脱敏 Regex ──
+    private val IP_MASK_RE = Regex("(\\d{1,3})\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}")
+    private val IMEI_MASK_RE = Regex("\\b\\d{15,17}\\b")
+    private val TOKEN_MASK_RE = Regex("\"(token|password|auth_token|imei)\"\\s*:\\s*\"[^\"]+\"")
+    private val AUTH_MASK_RE = Regex("Authorization: [^\\s]+")
+
     /** 日志分类 */
     enum class Category(val label: String, val colorTag: String) {
         API("API/数据", "API"),
@@ -46,8 +52,13 @@ object DebugLogger {
         GENERAL("通用", "GEN"),
     }
 
-    /** 所有日志条目（线程安全） */
-    private val entries = ConcurrentLinkedQueue<Entry>()
+    /** 所有日志条目（线程安全，synchronized ArrayDeque） */
+    private val entriesLock = Any()
+    private val entries = ArrayDeque<Entry>(MAX_ENTRIES)
+
+    /** 待写入文件队列（线程安全，无锁 ConcurrenLinkQueue）。
+     *  log() 中只入队不写文件，在 getWifiData() 结束或 onPause() 时批量 flush。 */
+    private val pendingEntries = ConcurrentLinkedQueue<Entry>()
 
     /** 是否启用调试模式 (通过 SP 持久化) */
     var enabled = false
@@ -120,7 +131,10 @@ object DebugLogger {
 
         // 进程
         val pm = ctx.packageManager
-        val pi = try { pm.getPackageInfo(ctx.packageName, 0) } catch (_: Exception) { null }
+        val pi = try { pm.getPackageInfo(ctx.packageName, 0) } catch (_: Exception) {
+            // 诊断初始化阶段，getPackageInfo 失败不影响核心功能
+            null
+        }
         systemInfoCache.appendLine()
         systemInfoCache.appendLine("--- 应用 ---")
         systemInfoCache.appendLine("包名: ${ctx.packageName}")
@@ -219,10 +233,11 @@ object DebugLogger {
 
         val maskedMsg = maskSensitiveInfo(message)
         val entry = Entry(System.currentTimeMillis(), categoryLevel(category), category, tag, maskedMsg)
-        entries.add(entry)
-
-        while (entries.size > MAX_ENTRIES) {
-            entries.poll()
+        synchronized(entriesLock) {
+            entries.addLast(entry)
+            while (entries.size > MAX_ENTRIES) {
+                entries.removeFirst()
+            }
         }
 
         // Logcat 输出
@@ -238,7 +253,8 @@ object DebugLogger {
             lastRenderEventTime = System.currentTimeMillis()
         }
 
-        saveEntryToFile(entry)
+        // 只入队，不写文件 — 批量 flush 时统一写入
+        pendingEntries.add(entry)
     }
 
     private fun categoryLevel(cat: Category) = when (cat) {
@@ -266,24 +282,29 @@ object DebugLogger {
         val sw = StringWriter()
         ex.printStackTrace(PrintWriter(sw))
         log(Category.EXCEPTION, "CrashHandler", sw.toString(), force = true)
+        flushToFile() // 崩溃日志立即落盘
     }
 
     // ==================== 查询方法 ====================
 
-    fun getAll(): List<Entry> = entries.toList().reversed()
-    fun getRecent(n: Int = 100): List<Entry> = entries.toList().takeLast(n).reversed()
-    fun size(): Int = entries.size
+    fun getAll(): List<Entry> = synchronized(entriesLock) { entries.toList().reversed() }
+    fun getRecent(n: Int = 100): List<Entry> = synchronized(entriesLock) { entries.takeLast(n).reversed() }
+    fun size(): Int = synchronized(entriesLock) { entries.size }
 
     /** 按分类筛选 */
     fun getByCategory(cat: Category, n: Int = 50): List<Entry> =
-        entries.toList().filter { it.category == cat }.takeLast(n).reversed()
+        synchronized(entriesLock) {
+            entries.filter { it.category == cat }.takeLast(n).reversed()
+        }
 
     /** 获取所有日志的格式化文本 */
     fun getAllText(): String = getAll().joinToString("\n") { it.formatted() }
 
     /** 获取分类统计 */
     fun getCategoryStats(): Map<Category, Int> =
-        entries.groupBy { it.category }.mapValues { it.value.size }
+        synchronized(entriesLock) {
+            entries.groupBy { it.category }.mapValues { it.value.size }
+        }
 
     // ==================== 全量诊断报告 ====================
 
@@ -318,7 +339,7 @@ object DebugLogger {
             stats.toList().sortedByDescending { it.second }.forEach { (cat, count) ->
                 sb.appendLine("  ${cat.label}: $count 条")
             }
-            sb.appendLine("  总计: ${entries.size} 条")
+            sb.appendLine("  总计: ${size()} 条")
             sb.appendLine()
         }
 
@@ -379,14 +400,17 @@ object DebugLogger {
     // ==================== 清理 ====================
 
     fun clear() {
-        entries.clear()
+        synchronized(entriesLock) { entries.clear() }
         lastUiSnapshot = ""
         renderEventCount = 0
         contextRef?.get()?.let { ctx ->
             try {
                 val file = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "app_debug.log")
                 if (file.exists()) file.delete()
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                // 清理日志文件失败（权限/磁盘问题），非关键错误
+                Log.w(TAG, "Failed to delete debug log file")
+            }
         }
     }
 
@@ -406,20 +430,20 @@ object DebugLogger {
     fun maskSensitive(input: String): String {
         if (input.isEmpty()) return input
         return input
-            .replace(Regex("(\\d{1,3})\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}"), "$1.***.***.***")
-            .replace(Regex("\\b\\d{15,17}\\b"), "***************")
-            .replace(Regex("\"(token|password|auth_token|imei)\"\\s*:\\s*\"[^\"]+\""), "\"$1\":\"***\"")
-            .replace(Regex("Authorization: [^\\s]+"), "Authorization: [MASKED]")
+            .replace(IP_MASK_RE, "$1.***.***.***")
+            .replace(IMEI_MASK_RE, "***************")
+            .replace(TOKEN_MASK_RE, "\"$1\":\"***\"")
+            .replace(AUTH_MASK_RE, "Authorization: [MASKED]")
     }
 
     /** 智能识别并脱敏敏感信息 */
     private fun maskSensitiveInfo(input: String): String {
         if (input.isEmpty()) return input
         return input
-            .replace(Regex("(\\d{1,3})\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}"), "$1.***.***.***")
-            .replace(Regex("\\b\\d{15,17}\\b"), "***************")
-            .replace(Regex("\"(token|password|auth_token|imei)\"\\s*:\\s*\"[^\"]+\""), "\"$1\":\"***\"")
-            .replace(Regex("Authorization: [^\\s]+"), "Authorization: [MASKED]")
+            .replace(IP_MASK_RE, "$1.***.***.***")
+            .replace(IMEI_MASK_RE, "***************")
+            .replace(TOKEN_MASK_RE, "\"$1\":\"***\"")
+            .replace(AUTH_MASK_RE, "Authorization: [MASKED]")
     }
 
     private fun desensitize(input: String): String {
@@ -428,18 +452,38 @@ object DebugLogger {
         return input.take(3) + "****" + input.takeLast(3)
     }
 
-    // ==================== 内部工具 ====================
+    // ==================== 批量文件写入 ====================
 
-    private fun saveEntryToFile(entry: Entry) {
+    /** 文件写入锁，防止并发 flush 导致行交错 */
+    private val fileWriteLock = Any()
+
+    private var lastLogFile: File? = null
+
+    /** 将队列中所有待写入条目一次性批量写入文件（仅一次 fopen/fclose） */
+    fun flushToFile() {
         contextRef?.get()?.let { ctx ->
-            try {
-                val file = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "app_debug.log")
-                if (file.exists() && file.length() > 3 * 1024 * 1024) {
-                    file.writeText("[Log truncated due to size]\n")
+            val batch = mutableListOf<Entry>()
+            while (pendingEntries.isNotEmpty()) {
+                pendingEntries.poll()?.let { batch.add(it) }
+            }
+            if (batch.isEmpty()) return
+
+            synchronized(fileWriteLock) {
+                try {
+                    val file = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "app_debug.log")
+                    if (lastLogFile != file) {
+                        lastLogFile = file
+                        file.parentFile?.mkdirs()
+                    }
+                    if (file.exists() && file.length() > 3 * 1024 * 1024) {
+                        file.writeText("[Log truncated due to size]\n")
+                    }
+                    FileWriter(file, true).use { writer ->
+                        batch.forEach { writer.appendLine(it.formatted()) }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to flush log to file: ${e.message}")
                 }
-                file.appendText(entry.formatted() + "\n")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to save log to file: ${e.message}")
             }
         }
     }

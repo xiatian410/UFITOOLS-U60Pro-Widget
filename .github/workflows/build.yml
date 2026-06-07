@@ -222,7 +222,8 @@ jobs:
           echo "SHA256: $APK_SHA256"
 
           # Changelog: 从上一个 tag 到 HEAD 的 commit
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          # 按 tag 创建时间排序取倒数第二个，避免 HEAD^ 历史上无 tag 的问题
+          PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
           if [ -n "$PREV_TAG" ]; then
             CHANGELOG_RAW=$(git log --pretty=format:"- %s" "${PREV_TAG}..HEAD" 2>/dev/null | head -20)
           else
@@ -232,7 +233,8 @@ jobs:
 
           PUBLISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           PUBLISHED_DATE="$(date -u +%Y-%m-%d)"
-          VERSION_CODE=$(git tag -l 'v*' | wc -l | tr -d ' ')
+          # versionCode 使用 Unix 时间戳，保证严格递增（避免 tag 数量回退问题）
+          VERSION_CODE=$(date -u +%s)
 
           # ===== 1. 生成 version.json =====
           jq -n \

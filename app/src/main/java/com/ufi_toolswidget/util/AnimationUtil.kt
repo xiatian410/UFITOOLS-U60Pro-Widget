@@ -44,6 +44,10 @@ object AnimationUtil {
             return
         }
 
+        // 如果上一个动画还在播放，直接跳到最终状态，避免堆积
+        (tv.tag as? Animator)?.let { if (it.isRunning) it.end() }
+        tv.tag = null
+
         tv.animate().cancel()
         tv.alpha = 1f
 
@@ -73,9 +77,15 @@ object AnimationUtil {
                             tv.setRenderEffect(null)
                         }
                     }
+                    unblurAnim.addListener(object : AnimatorListenerAdapter() {
+                        override fun onAnimationEnd(animation: Animator) {
+                            tv.tag = null
+                        }
+                    })
                     unblurAnim.start()
                 }
             })
+            tv.tag = blurAnim  // 保存引用，支持中断
             blurAnim.start()
         } else {
             tv.animate()
@@ -172,17 +182,29 @@ object AnimationUtil {
     fun applyCrossfadeEnterFromRecreate(activity: Activity, duration: Long = 600) {
         val bitmap = pendingTransitionBitmap ?: return
         pendingTransitionBitmap = null
-        val rootRoot = activity.window.decorView as? ViewGroup ?: return
+        val rootRoot = activity.window.decorView as? ViewGroup
+        if (rootRoot == null) {
+            if (!bitmap.isRecycled) bitmap.recycle()
+            return
+        }
         val overlay = ImageView(activity).apply {
             setImageBitmap(bitmap)
             scaleType = ImageView.ScaleType.FIT_XY
             elevation = 999999f
         }
         rootRoot.addView(overlay, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        overlay.animate().alpha(0f).setDuration(duration).withEndAction {
-            rootRoot.removeView(overlay)
-            bitmap.recycle()
-        }.start()
+        overlay.animate().alpha(0f).setDuration(duration)
+            .setListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    rootRoot.removeView(overlay)
+                    if (!bitmap.isRecycled) bitmap.recycle()
+                }
+                override fun onAnimationCancel(animation: Animator) {
+                    rootRoot.removeView(overlay)
+                    if (!bitmap.isRecycled) bitmap.recycle()
+                }
+            })
+            .start()
     }
 
     // ========== 主题切换专用：中心扩散圆形揭露 ==========

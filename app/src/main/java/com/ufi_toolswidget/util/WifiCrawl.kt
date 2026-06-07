@@ -23,8 +23,24 @@ object WifiCrawl {
     
     private const val TAG = "WifiCrawl"
     
-    var lastRawResponse: String = ""
-    var lastError: String = ""
+    @Volatile var lastRawResponse: String = ""
+    @Volatile var lastError: String = ""
+
+    // ── 预编译 Regex：避免每次调用重复编译 ──
+    private val PORT_RE = Regex(":(\\d+)$")
+    private val COPS_RE = Regex("""\+COPS:\s*\d+\s*,\s*\d+\s*,\s*"([^"]*)",?\s*(\d+)?""")
+    private val COPS_NUM_RE = Regex("""\+COPS:\s*\d+\s*,\s*\d+\s*,\s*(\d+),?\s*(\d+)?""")
+    private val BAND_RE = Regex("^[nNB]\\d+[A-Za-z]?\$")
+    private val C5GREG_RE = Regex("""\+C5GREG:\s*(\d+)\s*,\s*(\d+)\s*,\s*"([^",]*)"\s*,\s*"([^",]*)"\s*,\s*(\d+)(?:,\s*(\d+))?""")
+    private val WHITESPACE_RE = Regex("\\s+")
+    private val IMEI_RE = Regex("""(\d{15,17})""")
+    private val CREG_RE = Regex("""\+CREG:\s*(\d+)\s*,\s*(\d+)\s*,"?([^"",]*)"?\s*,\s*"?([^"",]*)"?\s*,\s*(\d+)""")
+    private val CGCONTRDP_RE = Regex("""\+CGCONTRDP:\s*\d+\s*,\s*\d+\s*,[\w.\-]*,"([^"]*)",[^"]*,[^"]*,[^"]*,\s*"?([^"",]*)"?\s*,\s*"?([^"",]*)"?""")
+    private val CPIN_RE = Regex("""\+CPIN:\s*(.+)""")
+    private val CFUN_RE = Regex("""\+CFUN:\s*(\d+)""")
+    private val CPAS_RE = Regex("""\+CPAS:\s*(\d+)""")
+    private val CGATT_RE = Regex("""\+CGATT:\s*(\d+)""")
+    private val AT_OK_RE = Regex("(^|\n)OK$")
 
     suspend fun getWifiData(context: Context): WifiEntity? = withContext(Dispatchers.IO) {
         try {
@@ -35,29 +51,46 @@ object WifiCrawl {
             
             DebugLogger.logApi(TAG, "Starting data refresh from $baseUrl")
 
-            // 1. 获取系统全量信息 (需认证)
-            val baseInfo = fetchApi(SPUtil.getDeviceInfoPath(context), t, auth, context)
+            // 全量并行获取（6 路 async）：baseDeviceInfo 不再阻塞信号/设备/AT 等请求
+            // 总耗时从 max(base)+max(others) 降为 max(all)
+            var baseInfo: org.json.JSONObject? = null
+            var signalInfo: org.json.JSONObject? = null
+            var goformDeviceInfo: org.json.JSONObject? = null
+            var versionInfo: org.json.JSONObject? = null
+            var tokenInfo: org.json.JSONObject? = null
+            var atNetworkInfo: AtSignalInfo? = null
+
+            coroutineScope {
+                val baseDeferred = async {
+                    fetchApi(SPUtil.getDeviceInfoPath(context), t, auth, context)
+                }
+                val signalDeferred = async {
+                    fetchApi("${SPUtil.getGoformCommandPath(context)}?is_all=true&cmd=lte_rsrp,Z5g_rsrp,network_type,rssi", t, auth, context)
+                }
+                val goformDeviceDeferred = async {
+                    fetchApi("${SPUtil.getGoformCommandPath(context)}?is_all=true&cmd=wan_ipaddr,ipv6_wan_ipaddr,pdp_type,imei,imsi,iccid,hardware_version,web_version,mac_address,pin_status", t, auth, context)
+                }
+                val versionDeferred = async { fetchApiNoAuth(SPUtil.getVersionInfoPath(context), t, context) }
+                val tokenDeferred = async { fetchApiNoAuth(SPUtil.getNeedTokenPath(context), t, context) }
+                val atNetworkDeferred = async { fetchAtNetworkInfo(t, auth, context) }
+
+                baseInfo = baseDeferred.await()
+                if (baseInfo == null) {
+                    DebugLogger.logApiErr(TAG, "Failed to fetch baseDeviceInfo: $lastError")
+                    return@coroutineScope
+                }
+                signalInfo = signalDeferred.await()
+                goformDeviceInfo = goformDeviceDeferred.await()
+                versionInfo = versionDeferred.await()
+                tokenInfo = tokenDeferred.await()
+                atNetworkInfo = atNetworkDeferred.await()
+            }
+            // baseInfo 为 null 时 coroutineScope 提前返回，走到这里 baseInfo 必定非 null
             if (baseInfo == null) {
-                DebugLogger.logApiErr(TAG, "Failed to fetch baseDeviceInfo: $lastError")
+                DebugLogger.flushToFile() // 刷新本轮批次日志
                 return@withContext null
             }
-            
-            // 2-6 并行获取
-            val signalDeferred = async { 
-                fetchApi("${SPUtil.getGoformCommandPath(context)}?is_all=true&cmd=lte_rsrp,Z5g_rsrp,network_type,rssi", t, auth, context)
-            }
-            val goformDeviceDeferred = async {
-                fetchApi("${SPUtil.getGoformCommandPath(context)}?is_all=true&cmd=wan_ipaddr,ipv6_wan_ipaddr,pdp_type,imei,imsi,iccid,hardware_version,web_version,mac_address,pin_status", t, auth, context)
-            }
-            val versionDeferred = async { fetchApiNoAuth(SPUtil.getVersionInfoPath(context), t, context) }
-            val tokenDeferred = async { fetchApiNoAuth(SPUtil.getNeedTokenPath(context), t, context) }
-            val atNetworkDeferred = async { fetchAtNetworkInfo(t, auth, context) }
-
-            val signalInfo = signalDeferred.await()
-            val goformDeviceInfo = goformDeviceDeferred.await()
-            val versionInfo = versionDeferred.await()
-            val tokenInfo = tokenDeferred.await()
-            var atNetworkInfo = atNetworkDeferred.await()
+            val baseDeviceInfo = baseInfo // 本地非 null 引用，方便后续智能转换
 
             // Goform 诊断日志
             DebugLogger.logApi(TAG, "Goform signal check: success=${signalInfo != null}")
@@ -65,10 +98,10 @@ object WifiCrawl {
             DebugLogger.logApi(TAG, "Parallel tasks finished. atNetworkInfo success=${atNetworkInfo != null}")
 
             // --- 精准解析 ---
-            val model = baseInfo.optString("model", "F50")
-            val batteryPercent = baseInfo.optInt("battery", -1)
-            val cpuUsage = baseInfo.optDouble("cpu_usage", 0.0)
-            val memUsage = baseInfo.optDouble("mem_usage", 0.0)
+            val model = baseDeviceInfo.optString("model", "F50")
+            val batteryPercent = baseDeviceInfo.optInt("battery", -1)
+            val cpuUsage = baseDeviceInfo.optDouble("cpu_usage", 0.0)
+            val memUsage = baseDeviceInfo.optDouble("mem_usage", 0.0)
             
             // === Goform 设备身份+网络地址 ===
             val wanIp = goformDeviceInfo?.optString("wan_ipaddr", "") ?: ""
@@ -91,14 +124,14 @@ object WifiCrawl {
             }
 
             // --- 流量提取 (仅从 baseDeviceInfo) ---
-            val dTx = extractTrafficBytes(baseInfo, "daily_tx_bytes")
-            val dRx = extractTrafficBytes(baseInfo, "daily_rx_bytes")
-            val dTotal = extractTrafficBytes(baseInfo, "daily_data", "day_data")
+            val dTx = extractTrafficBytes(baseDeviceInfo, "daily_tx_bytes")
+            val dRx = extractTrafficBytes(baseDeviceInfo, "daily_rx_bytes")
+            val dTotal = extractTrafficBytes(baseDeviceInfo, "daily_data", "day_data")
             val dailyRaw = if (dTotal > 0) dTotal else (dTx + dRx)
 
-            val mTx = extractTrafficBytes(baseInfo, "monthly_tx_bytes")
-            val mRx = extractTrafficBytes(baseInfo, "monthly_rx_bytes")
-            val mTotal = extractTrafficBytes(baseInfo, "monthly_data", "month_data", "total_data")
+            val mTx = extractTrafficBytes(baseDeviceInfo, "monthly_tx_bytes")
+            val mRx = extractTrafficBytes(baseDeviceInfo, "monthly_rx_bytes")
+            val mTotal = extractTrafficBytes(baseDeviceInfo, "monthly_data", "month_data", "total_data")
             var monthlyRaw = if (mTotal > 0) mTotal else (mTx + mRx)
 
             // 如果 API 没返回月流量，用缓存
@@ -110,24 +143,24 @@ object WifiCrawl {
             Log.d(TAG, "dailyRaw=$dailyRaw, monthlyRaw=$monthlyRaw (tx=$mTx, rx=$mRx)")
             
             // 温度 (60620 -> 60.6)
-            val tempRaw = baseInfo.optDouble("cpu_temp", 0.0)
+            val tempRaw = baseDeviceInfo.optDouble("cpu_temp", 0.0)
 
             // === /api/baseDeviceInfo 新增字段 ===
-            val appVer = baseInfo.optString("app_ver", "")
-            val appVerCode = baseInfo.optString("app_ver_code", "")
-            val currentNow = baseInfo.optInt("current_now", -1)        // 微安 µA
-            val voltageNow = baseInfo.optInt("voltage_now", -1)        // 微伏 µV
-            val internalTotal = baseInfo.optLong("internal_total_storage", -1L)
-            val internalUsed = baseInfo.optLong("internal_used_storage", -1L)
-            val internalAvailable = baseInfo.optLong("internal_available_storage", -1L)
-            val externalTotal = baseInfo.optLong("external_total_storage", -1L)
-            val externalUsed = baseInfo.optLong("external_used_storage", -1L)
-            val externalAvailable = baseInfo.optLong("external_available_storage", -1L)
-            val clientIp = baseInfo.optString("client_ip", "")
+            val appVer = baseDeviceInfo.optString("app_ver", "")
+            val appVerCode = baseDeviceInfo.optString("app_ver_code", "")
+            val currentNow = baseDeviceInfo.optInt("current_now", -1)        // 微安 µA
+            val voltageNow = baseDeviceInfo.optInt("voltage_now", -1)        // 微伏 µV
+            val internalTotal = baseDeviceInfo.optLong("internal_total_storage", -1L)
+            val internalUsed = baseDeviceInfo.optLong("internal_used_storage", -1L)
+            val internalAvailable = baseDeviceInfo.optLong("internal_available_storage", -1L)
+            val externalTotal = baseDeviceInfo.optLong("external_total_storage", -1L)
+            val externalUsed = baseDeviceInfo.optLong("external_used_storage", -1L)
+            val externalAvailable = baseDeviceInfo.optLong("external_available_storage", -1L)
+            val clientIp = baseDeviceInfo.optString("client_ip", "")
 
             // === cpu_temp_list 各模块温度 ===
             val cpuTempList = mutableListOf<CpuTempItem>()
-            baseInfo.optJSONArray("cpu_temp_list")?.let { arr ->
+            baseDeviceInfo.optJSONArray("cpu_temp_list")?.let { arr ->
                 for (i in 0 until arr.length()) {
                     val obj = arr.optJSONObject(i) ?: continue
                     cpuTempList.add(CpuTempItem(
@@ -139,7 +172,7 @@ object WifiCrawl {
 
             // === cpuFreqInfo 各核心频率 ===
             val cpuFreqMap = mutableMapOf<String, CpuFreqItem>()
-            baseInfo.optJSONObject("cpuFreqInfo")?.let { freqObj ->
+            baseDeviceInfo.optJSONObject("cpuFreqInfo")?.let { freqObj ->
                 freqObj.keys().forEach { key ->
                     val core = freqObj.optJSONObject(key) ?: return@forEach
                     cpuFreqMap[key] = CpuFreqItem(
@@ -151,7 +184,7 @@ object WifiCrawl {
 
             // === cpuUsageInfo 各核心使用率 ===
             val cpuUsageMap = mutableMapOf<String, String>()
-            baseInfo.optJSONObject("cpuUsageInfo")?.let { usageObj ->
+            baseDeviceInfo.optJSONObject("cpuUsageInfo")?.let { usageObj ->
                 usageObj.keys().forEach { key ->
                     cpuUsageMap[key] = usageObj.optString(key, "--")
                 }
@@ -164,7 +197,7 @@ object WifiCrawl {
             var swapTotalKb = 0L
             var swapUsedKb = 0L
             var swapFreeKb = 0L
-            baseInfo.optJSONObject("memInfo")?.let { memObj ->
+            baseDeviceInfo.optJSONObject("memInfo")?.let { memObj ->
                 memTotalKb = memObj.optLong("mem_total_kb", 0L)
                 memAvailableKb = memObj.optLong("mem_available_kb", 0L)
                 memUsedKb = memObj.optLong("mem_used_kb", 0L)
@@ -187,6 +220,8 @@ object WifiCrawl {
                 netType.contains("5G") -> signalInfo?.optString("Z5g_rsrp")
                 else -> signalInfo?.optString("lte_rsrp")
             } ?: signalInfo?.optString("rssi") ?: "--"
+
+            DebugLogger.flushToFile() // 本轮数据刷新完毕，批量落盘
 
             WifiEntity(
                 model = model,
@@ -244,21 +279,39 @@ object WifiCrawl {
         } catch (e: Exception) {
             e.printStackTrace()
             lastError = "Parse Error: ${e.message}"
+            DebugLogger.flushToFile() // 异常落盘
             null
         }
     }
 
+    /** 封装 HTTP 响应（body 已读取，连接已由 executeRequest 内部关闭） */
+    private data class HttpResponse(
+        val code: Int,
+        val isSuccessful: Boolean,
+        val body: String
+    )
+
     /**
      * 非阻塞网络请求：使用 OkHttp 异步 enqueue + suspendCancellableCoroutine，
      * 不阻塞 IO 线程，且支持协程取消。
+     * 内部自动关闭 Response，调用方无需手动 use{}，从根源消除连接泄漏风险。
      */
-    private suspend fun executeRequest(req: Request): Response? =
+    private suspend fun executeRequest(req: Request): HttpResponse? =
         suspendCancellableCoroutine { continuation ->
             val call = NetUtil.client.newCall(req)
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {
                 override fun onResponse(call: Call, response: Response) {
-                    continuation.resume(response)
+                    try {
+                        response.use {
+                            val body = it.body?.string() ?: ""
+                            continuation.resume(HttpResponse(it.code, it.isSuccessful, body))
+                        }
+                    } catch (e: IOException) {
+                        // body.string() 中途断网抛异常 → OkHttp 已回调 onResponse 不会调 onFailure
+                        // 必须手动 resume，否则协程永久挂起
+                        continuation.resume(null)
+                    }
                 }
                 override fun onFailure(call: Call, e: IOException) {
                     continuation.resume(null)
@@ -283,18 +336,15 @@ object WifiCrawl {
             DebugLogger.logApiErr(TAG, "Request failed: $baseUrl$path - $lastError")
             return null
         }
-        return resp.use { response ->
-            val content = response.body?.string() ?: ""
-            lastRawResponse = content
-            
-            if (response.isSuccessful && content.isNotEmpty()) {
-                DebugLogger.logApi(TAG, "API Success [$path], code=${response.code}, resp=$content")
-                JSONObject(content)
-            } else {
-                lastError = "HTTP ${response.code} on $purePath"
-                DebugLogger.logApiErr(TAG, "API Error [$path], code=${response.code}, resp=$content")
-                null
-            }
+        lastRawResponse = resp.body
+
+        return if (resp.isSuccessful && resp.body.isNotEmpty()) {
+            DebugLogger.logApi(TAG, "API Success [$path], code=${resp.code}, resp=${resp.body}")
+            JSONObject(resp.body)
+        } else {
+            lastError = "HTTP ${resp.code} on $purePath"
+            DebugLogger.logApiErr(TAG, "API Error [$path], code=${resp.code}, resp=${resp.body}")
+            null
         }
     }
 
@@ -309,13 +359,10 @@ object WifiCrawl {
             .build()
 
         val resp = executeRequest(req) ?: return null
-        return resp.use { response ->
-            val content = response.body?.string() ?: ""
-            if (response.isSuccessful && content.isNotEmpty()) {
-                JSONObject(content)
-            } else {
-                null
-            }
+        return if (resp.isSuccessful && resp.body.isNotEmpty()) {
+            JSONObject(resp.body)
+        } else {
+            null
         }
     }
 
@@ -429,7 +476,7 @@ object WifiCrawl {
 
         // 获取用户填写的端口（如果有）
         val raw = SPUtil.getDeviceAddress(context).trim()
-        val userPort = Regex(":(\\d+)$").find(raw)?.groupValues?.get(1)?.toIntOrNull()
+        val userPort = PORT_RE.find(raw)?.groupValues?.get(1)?.toIntOrNull()
 
 
         val testPath = SPUtil.getNeedTokenPath(context)
@@ -467,11 +514,8 @@ object WifiCrawl {
                 .addHeader("kano-sign", sign)
                 .build()
             val resp = executeRequest(req) ?: return false
-            resp.use { response ->
-                if (!response.isSuccessful) return false
-                val body = response.body?.string() ?: ""
-                body.trimStart().startsWith("{")  // 合法 JSON 对象
-            }
+            if (!resp.isSuccessful) return false
+            resp.body.trimStart().startsWith("{")  // 合法 JSON 对象
         } catch (e: Exception) {
             false
         }
@@ -537,37 +581,38 @@ object WifiCrawl {
             }
 
             val results = kotlinx.coroutines.coroutineScope {
-                val copsDef = async { atQuery(copsCmd) }
-                val signalDetailDef = async { atQuery(if (isSpreadtrum) c5gregCmd else qengCmd) }
-                val cesqDef = async { atQuery(cesqCmd) }
-                val cgsnDef = async { atQuery(cgsnCmd) }
-                val cgeqosDef = async { atQuery(cgeqosCmd) }
-                val cgmmDef = async { atQuery(cgmmCmd) }
-                val cgmrDef = async { atQuery(cgmrCmd) }
-                val cregDef = async { atQuery(cregCmd) }
-                val cgcontrdpDef = async { atQuery(cgcontrdpCmd) }
-                val cpinDef = async { atQuery(cpinCmd) }
-                val cfunDef = async { atQuery(cfunCmd) }
-                val cpasDef = async { atQuery(cpasCmd) }
-                val cgattDef = async { atQuery(cgattCmd) }
+                // 每个 async 内部独立 catch，避免单路异常导致 awaitAll 全部取消
+                val copsDef = async { try { atQuery(copsCmd) } catch (_: Exception) { "" } }
+                val signalDetailDef = async { try { atQuery(if (isSpreadtrum) c5gregCmd else qengCmd) } catch (_: Exception) { "" } }
+                val cesqDef = async { try { atQuery(cesqCmd) } catch (_: Exception) { "" } }
+                val cgsnDef = async { try { atQuery(cgsnCmd) } catch (_: Exception) { "" } }
+                val cgeqosDef = async { try { atQuery(cgeqosCmd) } catch (_: Exception) { "" } }
+                val cgmmDef = async { try { atQuery(cgmmCmd) } catch (_: Exception) { "" } }
+                val cgmrDef = async { try { atQuery(cgmrCmd) } catch (_: Exception) { "" } }
+                val cregDef = async { try { atQuery(cregCmd) } catch (_: Exception) { "" } }
+                val cgcontrdpDef = async { try { atQuery(cgcontrdpCmd) } catch (_: Exception) { "" } }
+                val cpinDef = async { try { atQuery(cpinCmd) } catch (_: Exception) { "" } }
+                val cfunDef = async { try { atQuery(cfunCmd) } catch (_: Exception) { "" } }
+                val cpasDef = async { try { atQuery(cpasCmd) } catch (_: Exception) { "" } }
+                val cgattDef = async { try { atQuery(cgattCmd) } catch (_: Exception) { "" } }
                 awaitAll(copsDef, signalDetailDef, cesqDef, cgsnDef, cgeqosDef,
                     cgmmDef, cgmrDef, cregDef, cgcontrdpDef, cpinDef,
                     cfunDef, cpasDef, cgattDef)
             }
 
-            val copsStr = results[0] as String
-            val signalDetailStr = results[1] as String
-            val cesqStr = results[2] as String
-            val cgsnStr = results[3] as String
-            val cgeqosStr = results[4] as String
-            val cgmmStr = results[5] as String
-            val cgmrStr = results[6] as String
-            val cregStr = results[7] as String
-            val cgcontrdpStr = results[8] as String
-            val cpinStr = results[9] as String
-            val cfunStr = results[10] as String
-            val cpasStr = results[11] as String
-            val cgattStr = results[12] as String
+            val copsStr = results[0]
+            val signalDetailStr = results[1]
+            val cesqStr = results[2]
+            val cgsnStr = results[3]
+            val cgeqosStr = results[4]
+            val cgmmStr = results[5]
+            val cgmrStr = results[6]
+            val cregStr = results[7]
+            val cgcontrdpStr = results[8]
+            val cpinStr = results[9]
+            val cfunStr = results[10]
+            val cpasStr = results[11]
+            val cgattStr = results[12]
 
             val qengStr = if (!isSpreadtrum) signalDetailStr else ""
             val c5gregStr = if (isSpreadtrum) signalDetailStr else ""
@@ -617,15 +662,13 @@ object WifiCrawl {
         var actCode = -1
         val copsClean = copsRaw.replace("\r", "").replace("\nOK", "").replace("OK", "").trim()
 
-        val copsRe = Regex("""\+COPS:\s*\d+\s*,\s*\d+\s*,\s*"([^"]*)",?\s*(\d+)?""")
-        copsRe.find(copsClean)?.let { match ->
+        COPS_RE.find(copsClean)?.let { match ->
             operator = match.groupValues.getOrElse(1) { "" }
             actCode = match.groupValues.getOrElse(2) { "-1" }.toIntOrNull() ?: -1
         }
         // 也匹配无引号的数字运营商
         if (operator.isEmpty()) {
-            val copsReNum = Regex("""\+COPS:\s*\d+\s*,\s*\d+\s*,\s*(\d+),?\s*(\d+)?""")
-            copsReNum.find(copsClean)?.let { match ->
+            COPS_NUM_RE.find(copsClean)?.let { match ->
                 actCode = match.groupValues.getOrElse(2) { "-1" }.toIntOrNull() ?: actCode
             }
         }
@@ -657,7 +700,7 @@ object WifiCrawl {
             val parts = qengLine.split(",").map { it.trim().removeSurrounding("\"") }
 
             // 查找频段字段（B 开头 = LTE，n 开头 = NR）
-            val bandIdx = parts.indexOfFirst { it.matches(Regex("^[nNB]\\d+[A-Za-z]?\$")) }
+            val bandIdx = parts.indexOfFirst { it.matches(BAND_RE) }
 
             if (bandIdx >= 0) {
                 band = parts[bandIdx]
@@ -695,8 +738,8 @@ object WifiCrawl {
                     rsrq = parts.getOrElse(bandIdx + 2) { "" }.toIntOrNull() ?: Int.MIN_VALUE
                     sinr = parts.getOrElse(bandIdx + 4) { "" }.toIntOrNull() ?: Int.MIN_VALUE
                 }
-            } else if (parts.size >= 15) {
-                // 无频段字段，用已知位置解析 LTE
+            } else if (parts.size >= 13) {
+                // 无频段字段，用已知位置解析 LTE（适配 EC20/EC25/EG915 等不同模块格式）
                 // LTE 标准位: [3]earfcn [4]band_num [6]tac [8]pci [9]rsrp [10]rsrq [12]sinr
                 earfcn = parts[3].toIntOrNull() ?: -1
                 tac    = parts[6]
@@ -720,8 +763,7 @@ object WifiCrawl {
         if (c5gregRaw.isNotEmpty()) {
             val c5gClean = c5gregRaw.replace("\r", "").replace("\nOK", "").replace("OK", "").trim()
             // 匹配格式: +C5GREG: <n>,<stat>,"<tac>","<ci>",<act>,<mode>
-            val c5gRe = Regex("""\+C5GREG:\s*(\d+)\s*,\s*(\d+)\s*,\s*"([^",]*)"\s*,\s*"([^",]*)"\s*,\s*(\d+)(?:,\s*(\d+))?""")
-            c5gRe.find(c5gClean)?.let { m ->
+            C5GREG_RE.find(c5gClean)?.let { m ->
                 val c5gStat = m.groupValues[2].toIntOrNull() ?: -1
                 tac = m.groupValues[3]
                 cellId = m.groupValues[4]
@@ -774,7 +816,7 @@ object WifiCrawl {
                     cesqClean.substringAfter("+CESQ:").trim()
                 }
                 // 分离数据（逗号前）和可能的尾缀（如 "OK" 残余）
-                val dataOnly = afterCesq.split(Regex("\\s+")).firstOrNull { it.contains(",") } ?: afterCesq
+                val dataOnly = afterCesq.split(WHITESPACE_RE).firstOrNull { it.contains(",") } ?: afterCesq
                 val parts = dataOnly.split(",").map { s -> s.trim().filter { it.isDigit() || it == '-' } }
 
                 if (parts.size >= 6) {
@@ -856,8 +898,7 @@ object WifiCrawl {
                 .replace("\r\n", "\n").replace("\r", "\n")
                 .replace("OK", "").trim()
             // IMEI 通常是 15 位纯数字，提取第一行中的数字序列
-            val imeiRe = Regex("""(\d{15,17})""")
-            imeiRe.find(cgsnClean)?.let { match ->
+            IMEI_RE.find(cgsnClean)?.let { match ->
                 imei = match.groupValues[1]
             }
         }
@@ -907,8 +948,7 @@ object WifiCrawl {
         var lteRegistration = ""
         if (cregRaw.isNotEmpty()) {
             val clean = atClean(cregRaw)
-            val cregRe = Regex("""\+CREG:\s*(\d+)\s*,\s*(\d+)\s*,"?([^"",]*)"?\s*,\s*"?([^"",]*)"?\s*,\s*(\d+)""")
-            cregRe.find(clean)?.let { m ->
+            CREG_RE.find(clean)?.let { m ->
                 cregStat = m.groupValues[2].toIntOrNull() ?: -1
                 lteRegistration = when (cregStat) {
                     0 -> "未注册/搜索中"; 1 -> "已注册(归属)"; 2 -> "搜索中"
@@ -924,8 +964,7 @@ object WifiCrawl {
         if (cgcontrdpRaw.isNotEmpty()) {
             val clean = atClean(cgcontrdpRaw)
             // +CGCONTRDP: <cid>,<bearer>,<apn>,"<ip>",null,null,null,<dns1>,<dns2>,...
-            val dpRe = Regex("""\+CGCONTRDP:\s*\d+\s*,\s*\d+\s*,[\w.\-]*,"([^"]*)",[^"]*,[^"]*,[^"]*,\s*"?([^"",]*)"?\s*,\s*"?([^"",]*)"?""")
-            dpRe.find(clean)?.let { m ->
+            CGCONTRDP_RE.find(clean)?.let { m ->
                 wanIpAt = m.groupValues[1]
                 val d1 = m.groupValues[2].filter { it != '"' }
                 val d2 = m.groupValues[3].filter { it != '"' }
@@ -938,8 +977,7 @@ object WifiCrawl {
         var pinStatusAt = ""
         if (cpinRaw.isNotEmpty()) {
             val clean = atClean(cpinRaw)
-            val cpinRe = Regex("""\+CPIN:\s*(.+)""")
-            cpinRe.find(clean)?.let { m ->
+            CPIN_RE.find(clean)?.let { m ->
                 pinStatusAt = m.groupValues[1].trim()
             }
         }
@@ -948,8 +986,7 @@ object WifiCrawl {
         var rfFunc = ""
         if (cfunRaw.isNotEmpty()) {
             val clean = atClean(cfunRaw)
-            val funRe = Regex("""\+CFUN:\s*(\d+)""")
-            funRe.find(clean)?.let { m ->
+            CFUN_RE.find(clean)?.let { m ->
                 rfFunc = when (m.groupValues[1]) {
                     "1" -> "全功能(射频开启)"
                     "0" -> "最小功能"
@@ -963,8 +1000,7 @@ object WifiCrawl {
         var moduleState = ""
         if (cpasRaw.isNotEmpty()) {
             val clean = atClean(cpasRaw)
-            val pasRe = Regex("""\+CPAS:\s*(\d+)""")
-            pasRe.find(clean)?.let { m ->
+            CPAS_RE.find(clean)?.let { m ->
                 moduleState = when (m.groupValues[1]) {
                     "0" -> "就绪(可接受AT)"
                     "1" -> "不可用"
@@ -981,8 +1017,7 @@ object WifiCrawl {
         var psAttached = ""
         if (cgattRaw.isNotEmpty()) {
             val clean = atClean(cgattRaw)
-            val gattRe = Regex("""\+CGATT:\s*(\d+)""")
-            gattRe.find(clean)?.let { m ->
+            CGATT_RE.find(clean)?.let { m ->
                 psAttached = if (m.groupValues[1] == "1") "已附着(数据可用)" else "未附着"
             }
         }
@@ -1028,11 +1063,12 @@ object WifiCrawl {
         )
     }
 
-    /** AT 响应清理：去掉 \r\n、OK、多余空白 */
+    /** AT 响应清理：去掉 \r、独立成行的 "OK" 终止符（仅行级，不触碰数据内的 "OK" 子串）。 */
     private fun atClean(raw: String): String = raw
-        .replace("\r\n", "\n").replace("\r", "\n")
-        .replace("\nOK", "").replace("OK\n", "")
-        .replace("OK", "").trim()
+        .replace("\r", "")
+        .replace("\nOK\n", "\n")
+        .replace(AT_OK_RE, "")
+        .trim()
 
     /** 运营商识别 (MCC 460)：基于 PLMN 或 IMSI 前缀 */
     private fun mapPlmnToCarrier(input: String): String {

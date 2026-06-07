@@ -25,6 +25,7 @@ import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import com.ufi_toolswidget.util.AnimationUtil
 import com.ufi_toolswidget.util.BackgroundUtil
+import com.ufi_toolswidget.util.CommonDialogHelper
 import com.ufi_toolswidget.util.SPUtil
 import com.ufi_toolswidget.util.ThemeChangeNotifier
 import com.ufi_toolswidget.util.ThemeColors
@@ -174,8 +175,7 @@ class AppSettingsActivity : AppCompatActivity() {
         activeThemeDialog?.takeIf { it.isShowing }?.dismiss()
         activeThemeDialog = null
 
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        val dialog = CommonDialogHelper.createDialog(this)
         dialog.setContentView(R.layout.layout_common_dialog)
         // ...
 
@@ -187,7 +187,7 @@ class AppSettingsActivity : AppCompatActivity() {
         dialog.findViewById<ImageView>(R.id.common_dialog_icon).setImageResource(R.drawable.ic_sun_moon)
         dialog.findViewById<View>(R.id.common_dialog_button_container).visibility = View.GONE
 
-        applyThemeToDialogRoot(dialog)
+        CommonDialogHelper.applyThemeToDialogRoot(this, dialog)
 
         val selectedBg = makeSelectedBg(accent, cornerRadius)
         val unselectedBg = makeUnselectedBg(cornerRadius)
@@ -216,27 +216,12 @@ class AppSettingsActivity : AppCompatActivity() {
             })
         }
 
-        setupDialogWindow(dialog)
+        CommonDialogHelper.setupDialogWindow(this, dialog)
         activeThemeDialog = dialog
         dialog.show()
     }
 
-    /** 弹窗窗口通用配置 */
-    private fun setupDialogWindow(dialog: Dialog) {
-        dialog.window?.apply {
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            setDimAmount(0.08f)
-            setLayout(
-                (resources.displayMetrics.widthPixels * 0.88f).toInt(),
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setWindowAnimations(R.style.DialogAnimationTheme)
-        }
-        // ── 动态模糊背景：API 31+ 原生模糊 ──
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            AnimationUtil.applyDialogBlurIn(dialog)
-        }
-    }
+
 
     /** 带动画退场关闭弹窗：先执行模糊退场动画(260ms)，再关闭弹窗并执行回调 */
     private fun dismissDialogWithAnimation(dialog: Dialog, onComplete: () -> Unit = {}) {
@@ -328,8 +313,7 @@ class AppSettingsActivity : AppCompatActivity() {
         activeColorDialog?.takeIf { it.isShowing }?.dismiss()
         activeColorDialog = null
 
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        val dialog = CommonDialogHelper.createDialog(this)
         dialog.setContentView(R.layout.layout_common_dialog)
 
         val textPrimary = ThemeColors.textPrimary(this)
@@ -340,7 +324,7 @@ class AppSettingsActivity : AppCompatActivity() {
         dialog.findViewById<ImageView>(R.id.common_dialog_icon).setImageResource(R.drawable.ic_palette)
         dialog.findViewById<View>(R.id.common_dialog_button_container).visibility = View.GONE
 
-        applyThemeToDialogRoot(dialog)
+        CommonDialogHelper.applyThemeToDialogRoot(this, dialog)
 
         val content = dialog.findViewById<LinearLayout>(R.id.common_dialog_content)
         val chipRadius = 12f * resources.displayMetrics.density
@@ -374,7 +358,7 @@ class AppSettingsActivity : AppCompatActivity() {
         // 如果当前选中自定义，显示编辑面板
         if (currentThemeIndex == -1) customPanel.visibility = View.VISIBLE
 
-        setupDialogWindow(dialog)
+        CommonDialogHelper.setupDialogWindow(this, dialog)
         activeColorDialog = dialog
         dialog.show()
     }
@@ -505,7 +489,7 @@ class AppSettingsActivity : AppCompatActivity() {
             // 2. 手动刷新当前显示的配色弹窗 UI
             activeColorDialog?.let { dialog ->
                 if (dialog.isShowing) {
-                    applyThemeToDialogRoot(dialog)
+                    CommonDialogHelper.applyThemeToDialogRoot(this, dialog)
                     val textPrimary = ThemeColors.textPrimary(this)
                     val accent = ThemeColors.accent(this)
                     val cardBg = ThemeColors.cardBg(this)
@@ -689,8 +673,7 @@ class AppSettingsActivity : AppCompatActivity() {
         activeIntervalDialog?.takeIf { it.isShowing }?.dismiss()
         activeIntervalDialog = null
 
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        val dialog = CommonDialogHelper.createDialog(this)
         dialog.setContentView(R.layout.layout_common_dialog)
 
         val textPrimary = ThemeColors.textPrimary(this)
@@ -701,7 +684,7 @@ class AppSettingsActivity : AppCompatActivity() {
         dialog.findViewById<ImageView>(R.id.common_dialog_icon).setImageResource(R.drawable.ic_clock_bolt)
         dialog.findViewById<View>(R.id.common_dialog_button_container).visibility = View.GONE
 
-        applyThemeToDialogRoot(dialog)
+        CommonDialogHelper.applyThemeToDialogRoot(this, dialog)
 
         val content = dialog.findViewById<LinearLayout>(R.id.common_dialog_content)
         val cornerRadius = 12f * resources.displayMetrics.density
@@ -736,7 +719,7 @@ class AppSettingsActivity : AppCompatActivity() {
         content.addView(customPanel)
         if (!isPreset && mainIntervalSeconds > 0) customPanel.visibility = View.VISIBLE
 
-        setupDialogWindow(dialog)
+        CommonDialogHelper.setupDialogWindow(this, dialog)
 
         activeIntervalDialog = dialog
         dialog.show()
@@ -920,8 +903,7 @@ class AppSettingsActivity : AppCompatActivity() {
         activeBgDialog?.takeIf { it.isShowing }?.dismiss()
         activeBgDialog = null
 
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        val dialog = CommonDialogHelper.createDialog(this)
         dialog.setContentView(R.layout.layout_common_dialog)
 
         val textPrimary = ThemeColors.textPrimary(this)
@@ -931,7 +913,7 @@ class AppSettingsActivity : AppCompatActivity() {
         dialog.findViewById<ImageView>(R.id.common_dialog_icon).setImageResource(R.drawable.ic_photo)
         dialog.findViewById<View>(R.id.common_dialog_button_container).visibility = View.GONE
 
-        applyThemeToDialogRoot(dialog)
+        CommonDialogHelper.applyThemeToDialogRoot(this, dialog)
 
         val content = dialog.findViewById<LinearLayout>(R.id.common_dialog_content)
         val cornerRadius = 12f * resources.displayMetrics.density
@@ -960,20 +942,7 @@ class AppSettingsActivity : AppCompatActivity() {
             })
         }
 
-        dialog.window?.apply {
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            setDimAmount(0.08f)
-            setLayout(
-                (resources.displayMetrics.widthPixels * 0.88f).toInt(),
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setWindowAnimations(R.style.DialogAnimationTheme)
-        }
-
-        // ── 动态模糊背景：API 31+ 原生模糊 ──
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            AnimationUtil.applyDialogBlurIn(dialog)
-        }
+        CommonDialogHelper.setupDialogWindow(this, dialog)
 
         activeBgDialog = dialog
         dialog.show()
@@ -1072,39 +1041,4 @@ class AppSettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** 为弹窗根布局动态应用主题色 */
-    private fun applyThemeToDialogRoot(dialog: Dialog) {
-        val root = dialog.findViewById<ViewGroup>(android.R.id.content)
-            ?.let { if (it.childCount > 0) it.getChildAt(0) as? ViewGroup else it } ?: return
-        val textPrimary = ThemeColors.textPrimary(this)
-        val accent = ThemeColors.accent(this)
-        val cardBg = ThemeColors.cardBg(this)
-
-        val borderColor = if (SPUtil.getNightMode(this) == AppCompatDelegate.MODE_NIGHT_YES)
-            0x4DFFFFFF.toInt() else 0x35000000
-        root.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(cardBg)
-            cornerRadius = 16f * resources.displayMetrics.density
-            setStroke(2, borderColor)
-        }
-
-        // 遍历子视图着色
-        applyThemeToViewTree(root, textPrimary, accent, cardBg)
-    }
-
-    /** 递归为视图树着色文字/图标 */
-    private fun applyThemeToViewTree(view: View, textPrimary: Int, accent: Int, cardBg: Int) {
-        if (view is ViewGroup && view.id != R.id.common_dialog_content) {
-            for (i in 0 until view.childCount) {
-                applyThemeToViewTree(view.getChildAt(i), textPrimary, accent, cardBg)
-            }
-        }
-        if (view is TextView && view.id != R.id.common_dialog_btn_primary) {
-            view.setTextColor(textPrimary)
-        }
-        if (view is ImageView) {
-            view.setColorFilter(ThemeColors.iconTint(this))
-        }
-    }
 }

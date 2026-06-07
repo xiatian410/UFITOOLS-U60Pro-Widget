@@ -2,9 +2,6 @@ package com.ufi_toolswidget
 
 import android.app.Dialog
 import android.content.BroadcastReceiver
-import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
@@ -16,10 +13,11 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.ufi_toolswidget.util.AnimationUtil
+import com.ufi_toolswidget.util.CommonDialogHelper
+import com.ufi_toolswidget.util.CommonSettingsItemHelper
 import com.ufi_toolswidget.util.NetUtil
 import com.ufi_toolswidget.util.SPUtil
 import com.ufi_toolswidget.util.ThemeChangeNotifier
@@ -88,14 +86,22 @@ class ConfigModifyActivity : AppCompatActivity() {
 
     private fun initAllItems() {
         // 基础连接：不显示副标题
-        initSettingItem(R.id.item_basic_config, R.drawable.ic_router, "基础连接",
+        CommonSettingsItemHelper.setupSettingItem(
+            findViewById(R.id.item_basic_config),
+            iconRes = R.drawable.ic_router,
+            title = "基础连接",
             showSubtitle = false,
-            onClick = ::showBasicConfigDialog)
+            onClick = ::showBasicConfigDialog
+        )
 
         // 高级配置：无副标题，点击先弹出警告确认
-        initSettingItem(R.id.item_advanced_config, R.drawable.ic_chip, "高级配置",
+        CommonSettingsItemHelper.setupSettingItem(
+            findViewById(R.id.item_advanced_config),
+            iconRes = R.drawable.ic_chip,
+            title = "高级配置",
             showSubtitle = false,
-            onClick = ::showAdvancedConfigDialog)
+            onClick = ::showAdvancedConfigDialog
+        )
     }
 
     private fun refreshAllSubtitles() {
@@ -145,15 +151,15 @@ class ConfigModifyActivity : AppCompatActivity() {
         )
     }
 
-    // ==================== 高级配置（警告确认 → 编辑弹窗） ====================
+    // ==================== 高级配置（红色警告弹窗 → 编辑弹窗） ====================
 
     private fun showAdvancedConfigDialog() {
-        com.ufi_toolswidget.util.PopupViewUtil.showConfirmDialog(
-            this,
+        activeDialog?.takeIf { it.isShowing }?.dismiss()
+        activeDialog = CommonDialogHelper.showWarningConfirmDialog(
+            context = this,
             title = "警告",
-            message = "正常情况切勿修改高级配置\n错误配置将导致设备功能异常\n\n确认要继续修改吗？",
-            isWarning = true,
-            primaryBtnText = "继续修改",
+            message = "正常情况切勿修改高级配置\n错误配置将导致设备功能异常",
+            confirmText = "继续修改",
             onConfirm = ::showAdvancedConfigDialogInternal
         )
     }
@@ -251,16 +257,13 @@ class ConfigModifyActivity : AppCompatActivity() {
         dialog.setContentView(R.layout.layout_common_dialog)
 
         val textPrimary = ThemeColors.textPrimary(this)
-        val accent = ThemeColors.accent(this)
-        val cardBg = ThemeColors.cardBg(this)
 
         dialog.findViewById<TextView>(R.id.common_dialog_title).text = title
         dialog.findViewById<ImageView>(R.id.common_dialog_icon).setImageResource(icon)
 
-        com.ufi_toolswidget.util.PopupViewUtil.applyThemeToDialogRoot(this, dialog)
+        CommonDialogHelper.applyThemeToDialogRoot(this, dialog)
 
         val content = dialog.findViewById<LinearLayout>(R.id.common_dialog_content)
-        val cornerRadius = 10f * resources.displayMetrics.density
         val editTexts = mutableListOf<EditText>()
 
         for ((index, field) in fields.withIndex()) {
@@ -280,49 +283,23 @@ class ConfigModifyActivity : AppCompatActivity() {
             content.addView(label)
 
             // 输入框
-            val etInput = EditText(this).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
+            val etInput = CommonSettingsItemHelper.createThemedEditText(
+                this,
+                hint = field.hint,
+                text = field.currentValue,
+                inputType = field.inputType
+            )
+
+            // 针对平台选择特殊处理：禁止手动输入，点击弹出选择列表
+            if (field.label.contains("设备平台")) {
+                CommonSettingsItemHelper.setupDropdownOnEditText(
+                    etInput,
+                    options = arrayOf("auto (自动探测)", "spreadtrum (展讯)", "quectel (移远)"),
+                    values = arrayOf("auto", "spreadtrum", "quectel"),
+                    currentValue = etInput.text.toString()
                 )
-                setHint(field.hint)
-                setText(field.currentValue)
-                this.inputType = field.inputType
-                maxLines = 1
-                textSize = 14f
-                setTextColor(textPrimary)
-                setHintTextColor(ThemeColors.textSecondary(this@ConfigModifyActivity))
-                setPadding(dp2px(14), dp2px(14), dp2px(14), dp2px(14))
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    setColor(cardBg)
-                    this.cornerRadius = cornerRadius
-                    setStroke(1, if (AppCompatDelegate.getDefaultNightMode() == AppCompatDelegate.MODE_NIGHT_YES)
-                        0x30FFFFFF.toInt() else 0x20000000)
-                }
-
-                // 针对平台选择特殊处理：禁止手动输入，点击弹出选择列表
-                if (field.label.contains("设备平台")) {
-                    isFocusable = false
-                    isClickable = true
-                    isCursorVisible = false
-                    setOnClickListener {
-                        val options = arrayOf("auto (自动探测)", "spreadtrum (展讯)", "quectel (移远)")
-                        val values = arrayOf("auto", "spreadtrum", "quectel")
-                        val currentVal = this.text.toString().lowercase()
-                        val currentIdx = values.indexOf(currentVal).coerceAtLeast(0)
-
-                        com.ufi_toolswidget.util.PopupViewUtil.showDropDownMenu(
-                            it,
-                            options = options,
-                            currentIndex = currentIdx,
-                            onSelect = { which ->
-                                this.setText(values[which])
-                            }
-                        )
-                    }
-                }
             }
+
             content.addView(etInput)
             editTexts.add(etInput)
         }
@@ -348,39 +325,20 @@ class ConfigModifyActivity : AppCompatActivity() {
             setOnClickListener { dialog.dismiss() }
         }
 
-        // 恢复默认按钮（仅在高级配置等场景显示，使用与取消按钮一致的 Outlined 样式）
+        // 恢复默认按钮
         if (onRestoreDefaults != null) {
-            val secondaryColor = ThemeColors.textSecondary(this@ConfigModifyActivity)
-            val textPrimary = ThemeColors.textPrimary(this@ConfigModifyActivity)
-
-            val btnRestore = MaterialButton(this@ConfigModifyActivity, null,
-                com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp2px(48)
-                ).apply {
-                    topMargin = dp2px(10)
-                }
-                text = "恢复默认"
-                textSize = 14f
-                insetTop = 0
-                insetBottom = 0
-                setTextColor(textPrimary)
-                strokeColor = android.content.res.ColorStateList.valueOf(secondaryColor)
-                strokeWidth = dp2px(1)
-                @Suppress("DEPRECATION")
-                setCornerRadius(dp2px(12))
-                setOnClickListener {
-                    onRestoreDefaults()
-                    refreshAllSubtitles()
-                    Toast.makeText(this@ConfigModifyActivity, "已恢复为默认配置", Toast.LENGTH_SHORT).show()
-                    dialog.dismiss()
-                }
+            val btnRestore = CommonSettingsItemHelper.createRestoreDefaultsButton(
+                this@ConfigModifyActivity
+            ) {
+                onRestoreDefaults()
+                refreshAllSubtitles()
+                Toast.makeText(this@ConfigModifyActivity, "已恢复为默认配置", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
             }
             btnContainer.addView(btnRestore)
         }
 
-        com.ufi_toolswidget.util.PopupViewUtil.setupDialogWindow(this, dialog)
+        CommonDialogHelper.setupDialogWindow(this, dialog)
         activeDialog = dialog
         dialog.show()
 
@@ -398,27 +356,6 @@ class ConfigModifyActivity : AppCompatActivity() {
         BaseWifiWidget.renderAllWidgets(this)
     }
 
-    // ==================== 设置项绑定 ====================
-
-    private fun initSettingItem(
-        itemId: Int, iconRes: Int, title: String,
-        showSubtitle: Boolean = true,
-        subtitleProvider: (() -> String)? = null,
-        onClick: () -> Unit
-    ) {
-        try {
-            findInItem<ImageView>(itemId, R.id.common_item_icon)?.setImageResource(iconRes)
-            findInItem<TextView>(itemId, R.id.common_item_title)?.text = title
-            val subtitle = findInItem<TextView>(itemId, R.id.common_item_subtitle)
-            if (showSubtitle && subtitleProvider != null) {
-                subtitle?.visibility = View.VISIBLE
-                subtitle?.text = subtitleProvider()
-            } else {
-                subtitle?.visibility = View.GONE
-            }
-        } catch (_: Exception) {}
-        findViewById<View>(itemId).setOnClickListener { onClick() }
-    }
 
     // ==================== 协议探测 ====================
 
@@ -434,10 +371,6 @@ class ConfigModifyActivity : AppCompatActivity() {
     }
 
     // ==================== 工具方法 ====================
-
-    private fun <T : View> findInItem(itemId: Int, childId: Int): T? {
-        return findViewById<View>(itemId)?.findViewById(childId)
-    }
 
     private fun dp2px(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
 }

@@ -76,8 +76,7 @@
             <ImageView
                 android:layout_width="20dp"
                 android:layout_height="20dp"
-                android:src="@drawable/ic_settings"
-                app:tint="@color/accent" />
+                android:src="@drawable/ic_settings" />
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -109,8 +108,7 @@
                 android:layout_height="18dp"
                 android:src="@drawable/ic_arrow_back"
                 android:rotation="180"
-                android:alpha="0.3"
-                app:tint="@color/text_main" />
+                android:alpha="0.3" />
         </LinearLayout>
 
         <!-- ===== 2. 配置修改 ===== -->
@@ -131,8 +129,7 @@
             <ImageView
                 android:layout_width="20dp"
                 android:layout_height="20dp"
-                android:src="@drawable/ic_router"
-                app:tint="@color/accent" />
+                android:src="@drawable/ic_router" />
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -164,8 +161,7 @@
                 android:layout_height="18dp"
                 android:src="@drawable/ic_arrow_back"
                 android:rotation="180"
-                android:alpha="0.3"
-                app:tint="@color/text_main" />
+                android:alpha="0.3" />
         </LinearLayout>
 
         <!-- ===== 3. 小组件设置 ===== -->
@@ -186,8 +182,7 @@
             <ImageView
                 android:layout_width="20dp"
                 android:layout_height="20dp"
-                android:src="@drawable/ic_widget_small"
-                app:tint="@color/accent" />
+                android:src="@drawable/ic_widget_small" />
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -219,8 +214,7 @@
                 android:layout_height="18dp"
                 android:src="@drawable/ic_arrow_back"
                 android:rotation="180"
-                android:alpha="0.3"
-                app:tint="@color/text_main" />
+                android:alpha="0.3" />
         </LinearLayout>
 
         <!-- ===== 4. 关于 ===== -->
@@ -241,8 +235,7 @@
             <ImageView
                 android:layout_width="20dp"
                 android:layout_height="20dp"
-                android:src="@drawable/ic_info"
-                app:tint="@color/accent" />
+                android:src="@drawable/ic_info" />
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -274,8 +267,7 @@
                 android:layout_height="18dp"
                 android:src="@drawable/ic_arrow_back"
                 android:rotation="180"
-                android:alpha="0.3"
-                app:tint="@color/text_main" />
+                android:alpha="0.3" />
         </LinearLayout>
 
     </LinearLayout>

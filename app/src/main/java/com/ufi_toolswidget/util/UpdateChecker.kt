@@ -190,7 +190,9 @@ object UpdateChecker {
         return error.contains("网络请求失败") || error.contains("Unable to resolve")
                 || error.contains("timeout") || error.contains("connect")
                 || error.contains("UnknownHost") || error.contains("403")
-                || error.contains("404") || error.contains("5")
+                || error.contains("404") || error.contains("500")
+                || error.contains("502") || error.contains("503")
+                || error.contains("504")
     }
 
     /**

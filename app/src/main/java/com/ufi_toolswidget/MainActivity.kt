@@ -42,6 +42,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.ufi_toolswidget.util.AnimationUtil
 import com.ufi_toolswidget.util.BackgroundUtil
+import com.ufi_toolswidget.util.CommonDialogHelper
 import com.ufi_toolswidget.util.CrashHandler
 import com.ufi_toolswidget.util.DebugLogger
 import com.ufi_toolswidget.util.ScaleTouchListener
@@ -55,11 +56,10 @@ import com.ufi_toolswidget.util.WifiEntity
 import com.ufi_toolswidget.widget.BaseWifiWidget
 import com.ufi_toolswidget.worker.WifiWorker
 import com.google.android.material.button.MaterialButton
+import androidx.lifecycle.ViewModelProvider
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -84,15 +84,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvStorage: TextView
     private lateinit var tvClientIp: TextView
 
-    // 保存最后一次获取到的完整数据（用于弹窗详情）
-    private var lastWifiEntity: WifiEntity? = null
+    // 保存最后一次获取到的完整数据（用于弹窗详情） — 已迁移至 MainViewModel
+    // 线程: 仅限主线程，使用 viewModel.getWifiEntity() 访问
 
     // 主题变更接收器
     private var themeChangeReceiver: BroadcastReceiver? = null
 
     // 当前打开的详情弹窗（支持实时刷新）
+    // activeDialogType 已迁移至 MainViewModel，通过 viewModel.setActiveDialogType() / viewModel.activeDialogType.value 访问
     private var activeDialog: Dialog? = null
-    private var activeDialogType: String? = null
 
     // 弹窗防拥堵：debounce 时间戳
     private var lastDialogClickTime = 0L
@@ -105,6 +105,14 @@ class MainActivity : AppCompatActivity() {
     private var downloadReceiver: BroadcastReceiver? = null
     private var autoRefreshJob: Job? = null
 
+    /** ViewModel：横跨配置变更存活，解决旋转屏幕数据丢失问题 */
+    private val viewModel: MainViewModel by lazy {
+        ViewModelProvider(this)[MainViewModel::class.java]
+    }
+
+    /** 首次加载动画是否已执行（避免旋转后重复触发） */
+    private var hasShownFirstLoadAnimation = false
+
     override fun onResume() {
         super.onResume()
         DebugLogger.logLife(TAG, "onResume() called")
@@ -114,8 +122,15 @@ class MainActivity : AppCompatActivity() {
             // 先检测 Worker 是否因连续失败被停止
             checkWorkerFailureState()
             // 只有没有错误弹窗显示时才刷新数据
-            if (activeDialogType != "error") {
+            if (viewModel.activeDialogType.value != "error") {
                 DebugLogger.logLife(TAG, "onResume: no error dialog, calling refreshData")
+                // 从 ViewModel 恢复缓存数据到 UI（旋转恢复场景）
+                viewModel.getWifiEntity()?.let { cachedData ->
+                    DebugLogger.logUi(TAG, "onResume: applying cached entity from ViewModel")
+                    hideLoadingView(false)
+                    hasShownFirstLoadAnimation = true  // 避免 refreshData 重复触发动画
+                    applyWifiEntityToUi(cachedData)
+                }
                 refreshData()
                 startAutoRefreshTimer()
             } else {
@@ -130,6 +145,7 @@ class MainActivity : AppCompatActivity() {
         // 离开界面时停止自动刷新
         stopAutoRefreshTimer()
         dismissActiveDialog()
+        DebugLogger.flushToFile() // Activity 离开前台，落盘日志
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -292,31 +308,31 @@ class MainActivity : AppCompatActivity() {
 
         // 网络 点击 → 网络详情 (RSRP/SINR/RSRQ)
         AnimationUtil.applyScaleClickAnimation(findViewById(R.id.main_item_network)) {
-            lastWifiEntity?.let { showNetworkDetailDialog(it) }
+            viewModel.getWifiEntity()?.let { showNetworkDetailDialog(it) }
         }
         // 温度 点击 → 温度详情
         AnimationUtil.applyScaleClickAnimation(findViewById(R.id.main_item_temp)) {
-            lastWifiEntity?.let { showTemperatureDialog(it) }
+            viewModel.getWifiEntity()?.let { showTemperatureDialog(it) }
         }
         // CPU 点击 → 详情弹窗
         AnimationUtil.applyScaleClickAnimation(findViewById(R.id.main_item_cpu)) {
-            lastWifiEntity?.let { showCpuDetailDialog(it) }
+            viewModel.getWifiEntity()?.let { showCpuDetailDialog(it) }
         }
         // 内存 点击 → 详情弹窗
         AnimationUtil.applyScaleClickAnimation(findViewById(R.id.main_item_mem)) {
-            lastWifiEntity?.let { showMemDetailDialog(it) }
+            viewModel.getWifiEntity()?.let { showMemDetailDialog(it) }
         }
         // 存储 点击 → 详情弹窗
         AnimationUtil.applyScaleClickAnimation(findViewById(R.id.main_item_storage)) {
-            lastWifiEntity?.let { showStorageDetailDialog(it) }
+            viewModel.getWifiEntity()?.let { showStorageDetailDialog(it) }
         }
         // 固件 点击 → 详情弹窗
         AnimationUtil.applyScaleClickAnimation(findViewById(R.id.main_item_firmware)) {
-            lastWifiEntity?.let { showFirmwareDetailDialog(it) }
+            viewModel.getWifiEntity()?.let { showFirmwareDetailDialog(it) }
         }
         // IP 点击 → 详情弹窗
         AnimationUtil.applyScaleClickAnimation(findViewById(R.id.main_item_ip)) {
-            lastWifiEntity?.let { showIpDetailDialog(it) }
+            viewModel.getWifiEntity()?.let { showIpDetailDialog(it) }
         }
 
         // 状态视图
@@ -355,162 +371,107 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private var refreshJob: Job? = null
-
     private fun refreshData() {
         DebugLogger.logApi(TAG, "refreshData() started")
-        // 防止并发刷新：取消上一次未完成的刷新
-        refreshJob?.cancel()
-        refreshJob = lifecycleScope.launch(Dispatchers.Main) {
-            val data = try {
-                WifiCrawl.getWifiData(this@MainActivity)
-            } catch (e: Exception) {
-                DebugLogger.logExc(TAG, "refreshData: unexpected exception: ${e.message}")
-                null
-            }
-            // 协程被取消 → 静默退出，不显示错误也不计数
-            if (!isActive) return@launch
-
-            if (data != null) {
-                DebugLogger.logApi(TAG, "refreshData: API success, model=${data.model}")
-                lastWifiEntity = data  // 保存完整数据供弹窗使用
-                // 成功 → 清除所有失败计数（无论之前是否 stopped）
-                WifiWorker.resetFailureState(this@MainActivity)
-                // 成功 → 始终隐藏 loadingView
-                if (activeDialogType == "error") {
-                    dismissActiveDialog()
-                }
+        viewModel.refreshData(
+            ctx = this,
+            onSuccess = { data ->
                 val wasLoading = loadingView.visibility == View.VISIBLE
                 hideLoadingView(wasLoading)
-                if (wasLoading) {
-                    // 首次加载成功 → 交错入场动画
+                if (wasLoading && !hasShownFirstLoadAnimation) {
+                    hasShownFirstLoadAnimation = true
                     setupAnimations()
                     DebugLogger.logUi(TAG, "First load complete, setupAnimations called")
                 }
-
-                // 更新主界面数据（实时变动部分采用柔和模糊/淡入切换）
-                val deviceName = data.deviceModel.ifEmpty { data.model }
-                if (tvModel.text != deviceName) tvModel.text = deviceName
-                try {
-                    val appVersion = packageManager.getPackageInfo(packageName, 0).versionName
-                    val subText = "软件 v$appVersion"
-                    if (tvSubtitle.text != subText) tvSubtitle.text = subText
-                } catch (_: Exception) {}
-
-                // 实时状态数据：使用 smoothUpdateText 提供模糊或淡入特效
-                val info = data.atNetworkInfo
-                val newNetText = if (info != null) {
-                    val carrierText = info.carrier.ifEmpty { info.operator }
-                    // 主界面精简：去掉 (NSA/SA) 等后缀，仅保留 5G/4G
-                    val typeText = info.networkType.replace(" NSA", "").replace(" SA", "")
-                        .ifEmpty { data.netType }
-
-                    if (carrierText.isNotEmpty() && typeText.isNotEmpty() && !typeText.contains(carrierText)) {
-                        "$carrierText $typeText"
-                    } else {
-                        typeText.ifEmpty { carrierText.ifEmpty { "--" } }
-                    }
-                } else {
-                    data.netType.ifEmpty { "--" }
-                }
-                DebugLogger.logUi(TAG, "Updating UI: net=$newNetText, temp=${getHighestTemp(data)}, cpu=${data.cpu}, mem=${data.mem}")
-                AnimationUtil.smoothUpdateText(tvNetSignal, newNetText)
-                AnimationUtil.smoothUpdateText(tvTemp, getHighestTemp(data))
-                AnimationUtil.smoothUpdateText(tvCpu, data.cpu.ifEmpty { "--" })
-                AnimationUtil.smoothUpdateText(tvMem, data.mem.ifEmpty { "--" })
-                AnimationUtil.smoothUpdateText(tvDaily, data.dailyFlow.ifEmpty { "--" })
-                AnimationUtil.smoothUpdateText(tvFlow, data.flow.ifEmpty { "--" })
-
-                // 电池：百分比为主，电流/电压为副
-                val (batteryPct, batterySub) = buildBatteryParts(data)
-                AnimationUtil.smoothUpdateText(tvBattery, batteryPct)
-                if (batterySub != null) {
-                    if (tvBatterySub.visibility != View.VISIBLE) {
-                        tvBatterySub.text = batterySub
-                        tvBatterySub.alpha = 0f
-                        tvBatterySub.visibility = View.VISIBLE
-                        tvBatterySub.animate().alpha(1f).setDuration(300).start()
-                    } else {
-                        AnimationUtil.smoothUpdateText(tvBatterySub, batterySub)
-                    }
-                } else {
-                    tvBatterySub.visibility = View.GONE
-                }
-
-                // 固件与存储
-                val fwMain = data.appVer.ifEmpty { data.firmwareVer.ifEmpty { "--" } }
-                AnimationUtil.smoothUpdateText(tvFirmware, fwMain)
-                if (data.appVerCode.isNotEmpty()) {
-                    val fwSub = "build ${data.appVerCode}"
-                    if (tvFirmwareSub.visibility != View.VISIBLE) {
-                        tvFirmwareSub.text = fwSub
-                        tvFirmwareSub.alpha = 0f
-                        tvFirmwareSub.visibility = View.VISIBLE
-                        tvFirmwareSub.animate().alpha(1f).setDuration(300).start()
-                    } else {
-                        AnimationUtil.smoothUpdateText(tvFirmwareSub, fwSub)
-                    }
-                } else {
-                    tvFirmwareSub.visibility = View.GONE
-                }
-                AnimationUtil.smoothUpdateText(tvStorage, data.internalStorage.ifEmpty { "--" })
-                AnimationUtil.smoothUpdateText(tvClientIp, data.clientIp.ifEmpty { "--" })
-
-                SPUtil.saveData(this@MainActivity, data)
-                BaseWifiWidget.renderAllWidgets(this@MainActivity)
-                // 刷新已打开的详情弹窗
+                applyWifiEntityToUi(data)
                 refreshActiveDialog(data)
-            } else {
-                // ====== 前台刷新失败 → 先隐藏 loadingView，再累加失败计数器 ======
-                hideLoadingView(loadingView.visibility == View.VISIBLE)
-                val error = WifiCrawl.lastError
-                val sp = this@MainActivity.getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
-
-                // 判断是网络不通还是 API 错误
-                val isNetworkError = error.contains("Network error", ignoreCase = true) ||
-                        error.contains("timeout", ignoreCase = true) ||
-                        error.contains("connect", ignoreCase = true) ||
-                        error.contains("refused", ignoreCase = true)
-
-                if (isNetworkError) {
-                    val netFails = sp.getInt(WifiWorker.KEY_NETWORK_FAILURE_COUNT, 0) + 1
-                    sp.edit().putInt(WifiWorker.KEY_NETWORK_FAILURE_COUNT, netFails).apply()
-                    DebugLogger.logApiErr(TAG, "refreshData: network error, netFails=$netFails/${WifiWorker.NETWORK_MAX_FAILURES}")
-
-                    if (netFails >= WifiWorker.NETWORK_MAX_FAILURES) {
-                        sp.edit()
-                            .putBoolean(WifiWorker.KEY_WORKER_STOPPED, true)
-                            .putInt(WifiWorker.KEY_API_FAILURE_COUNT, 0)
-                            .apply()
-                        SPUtil.setWorkerStopReason(this@MainActivity, WifiWorker.REASON_NETWORK)
-                        DebugLogger.logExc(TAG, "refreshData: network threshold reached, showing error dialog")
-                        BaseWifiWidget.renderAllWidgets(this@MainActivity)
-                        showErrorDialog()
-                        return@launch
-                    }
-                } else {
-                    val apiFails = sp.getInt(WifiWorker.KEY_API_FAILURE_COUNT, 0) + 1
-                    sp.edit().putInt(WifiWorker.KEY_API_FAILURE_COUNT, apiFails).apply()
-                    DebugLogger.logApiErr(TAG, "refreshData: API error, apiFails=$apiFails/${WifiWorker.API_MAX_FAILURES}, error=$error")
-
-                    if (apiFails >= WifiWorker.API_MAX_FAILURES) {
-                        sp.edit().putBoolean(WifiWorker.KEY_WORKER_STOPPED, true).apply()
-                        SPUtil.setWorkerStopReason(this@MainActivity, WifiWorker.REASON_API)
-                        DebugLogger.logExc(TAG, "refreshData: API threshold reached, showing error dialog")
-                        BaseWifiWidget.renderAllWidgets(this@MainActivity)
-                        showErrorDialog()
-                        return@launch
-                    }
-                }
-
-                // 还没达到阈值 → 只显示 Toast 提示
-                if (error.contains("401") || error.contains("Unauthorized")) {
-                    Toast.makeText(this@MainActivity, "访问受限，请在设置中检查管理口令", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(this@MainActivity, "同步失败: ${error.ifEmpty { "网络超时" }}", Toast.LENGTH_SHORT).show()
+            },
+            onError = { reason ->
+                showErrorDialog()
+            },
+            onToast = { msg, isLong ->
+                if (!isFinishing && !isDestroyed) {
+                    Toast.makeText(this@MainActivity, msg,
+                        if (isLong) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
                 }
             }
+        )
+    }
+
+    /**
+     * 将 [WifiEntity] 各字段应用到主界面 UI。
+     * 由 refreshData() 成功分支和旋转恢复时调用。
+     */
+    private fun applyWifiEntityToUi(data: WifiEntity) {
+        DebugLogger.logApi(TAG, "applyWifiEntityToUi: model=${data.model}")
+
+        // 设备名称 & 软件版本
+        val deviceName = data.deviceModel.ifEmpty { data.model }
+        if (tvModel.text != deviceName) tvModel.text = deviceName
+        try {
+            val appVersion = packageManager.getPackageInfo(packageName, 0).versionName
+            val subText = "软件 v$appVersion"
+            if (tvSubtitle.text != subText) tvSubtitle.text = subText
+        } catch (_: Exception) {
+            // getPackageInfo 在极少数情况下失败，非关键 UI 错误
         }
+
+        // 网络制式
+        val info = data.atNetworkInfo
+        val newNetText = if (info != null) {
+            val carrierText = info.carrier.ifEmpty { info.operator }
+            val typeText = info.networkType.replace(" NSA", "").replace(" SA", "")
+                .ifEmpty { data.netType }
+            if (carrierText.isNotEmpty() && typeText.isNotEmpty() && !typeText.contains(carrierText)) {
+                "$carrierText $typeText"
+            } else {
+                typeText.ifEmpty { carrierText.ifEmpty { "--" } }
+            }
+        } else {
+            data.netType.ifEmpty { "--" }
+        }
+        DebugLogger.logUi(TAG, "Updating UI: net=$newNetText")
+        AnimationUtil.smoothUpdateText(tvNetSignal, newNetText)
+        AnimationUtil.smoothUpdateText(tvTemp, getHighestTemp(data))
+        AnimationUtil.smoothUpdateText(tvCpu, data.cpu.ifEmpty { "--" })
+        AnimationUtil.smoothUpdateText(tvMem, data.mem.ifEmpty { "--" })
+        AnimationUtil.smoothUpdateText(tvDaily, data.dailyFlow.ifEmpty { "--" })
+        AnimationUtil.smoothUpdateText(tvFlow, data.flow.ifEmpty { "--" })
+
+        // 电池
+        val (batteryPct, batterySub) = buildBatteryParts(data)
+        AnimationUtil.smoothUpdateText(tvBattery, batteryPct)
+        if (batterySub != null) {
+            if (tvBatterySub.visibility != View.VISIBLE) {
+                tvBatterySub.text = batterySub
+                tvBatterySub.alpha = 0f
+                tvBatterySub.visibility = View.VISIBLE
+                tvBatterySub.animate().alpha(1f).setDuration(300).start()
+            } else {
+                AnimationUtil.smoothUpdateText(tvBatterySub, batterySub)
+            }
+        } else {
+            tvBatterySub.visibility = View.GONE
+        }
+
+        // 固件与存储
+        val fwMain = data.appVer.ifEmpty { data.firmwareVer.ifEmpty { "--" } }
+        AnimationUtil.smoothUpdateText(tvFirmware, fwMain)
+        if (data.appVerCode.isNotEmpty()) {
+            val fwSub = "build ${data.appVerCode}"
+            if (tvFirmwareSub.visibility != View.VISIBLE) {
+                tvFirmwareSub.text = fwSub
+                tvFirmwareSub.alpha = 0f
+                tvFirmwareSub.visibility = View.VISIBLE
+                tvFirmwareSub.animate().alpha(1f).setDuration(300).start()
+            } else {
+                AnimationUtil.smoothUpdateText(tvFirmwareSub, fwSub)
+            }
+        } else {
+            tvFirmwareSub.visibility = View.GONE
+        }
+        AnimationUtil.smoothUpdateText(tvStorage, data.internalStorage.ifEmpty { "--" })
+        AnimationUtil.smoothUpdateText(tvClientIp, data.clientIp.ifEmpty { "--" })
     }
 
     /** 隐藏加载界面，根据参数决定是否执行淡出动画 */
@@ -600,7 +561,7 @@ class MainActivity : AppCompatActivity() {
      * 显示错误状态弹窗
      */
     private fun showErrorDialog() {
-        if (activeDialogType == "error") return
+        if (viewModel.activeDialogType.value == "error") return
         dismissActiveDialog()
 
         val reason = SPUtil.getWorkerStopReason(this)
@@ -754,7 +715,7 @@ class MainActivity : AppCompatActivity() {
 
         if (!stopped) {
             // Worker 正常 → 如果错误弹窗已显示则关闭
-            if (activeDialogType == "error") {
+            if (viewModel.activeDialogType.value == "error") {
                 DebugLogger.logSys(TAG, "checkWorkerFailureState: stopped=false, dismissing error dialog")
                 dismissActiveDialog()
             }
@@ -796,7 +757,7 @@ class MainActivity : AppCompatActivity() {
     /** 创建主题统一的 Dialog，带防拥堵 + 弹窗动效 + 动态模糊背景（含退出渐变） */
     private fun createThemedDialog(layoutRes: Int, widthRatio: Float = 0.92f, dialogType: String): Dialog {
         // 同类型弹窗已显示 → 直接复用，避免叠加/闪烁
-        if (activeDialog?.isShowing == true && activeDialogType == dialogType) {
+        if (activeDialog?.isShowing == true && viewModel.activeDialogType.value == dialogType) {
             return activeDialog!!
         }
         // 不同类型 → 关闭旧的，创建新的
@@ -806,7 +767,7 @@ class MainActivity : AppCompatActivity() {
             fun realDismiss() {
                 super.dismiss()
                 activeDialog = null
-                activeDialogType = null
+                viewModel.setActiveDialogType(null)
             }
 
             override fun dismiss() {
@@ -814,7 +775,7 @@ class MainActivity : AppCompatActivity() {
                     realDismiss()
                     return
                 }
-                activeDialogType = null
+                viewModel.setActiveDialogType(null)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     AnimationUtil.applyDialogBlurOut(this) { realDismiss() }
                 } else {
@@ -827,151 +788,28 @@ class MainActivity : AppCompatActivity() {
         dialog.setContentView(layoutRes)
 
         // ── 动态应用主题色到弹窗根布局 ──
-        applyThemeToDialogRoot(dialog)
+        CommonDialogHelper.applyThemeToDialogRoot(this, dialog)
 
         dialog.setCanceledOnTouchOutside(true)
 
         dialog.window?.apply {
-            // 透明背景 + 极低不透明度遮罩（确保能拦截外部点击并关闭，同时不影响背景模糊感官）
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             setDimAmount(0.01f)
-
-            // 应用弹性缩放进出场动画
             setWindowAnimations(R.style.DialogAnimationTheme)
-
-            // 初始设置宽度，高度自适应
             val width = (resources.displayMetrics.widthPixels * widthRatio).toInt()
             setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
         // ── 动态模糊背景：API 31+ 原生模糊，API 26-30 bitmap 缩放模糊 ──
-        applyDialogBlur(dialog)
+        CommonDialogHelper.applyDialogBlur(this, dialog)
 
         dialog.setOnDismissListener {
             activeDialog = null
-            activeDialogType = null
+            viewModel.setActiveDialogType(null)
         }
         activeDialog = dialog
-        activeDialogType = dialogType
+        viewModel.setActiveDialogType(dialogType)
         return dialog
-    }
-
-    /** 应用动态模糊背景到弹窗窗口，支持步进渐变 */
-    private fun applyDialogBlur(dialog: Dialog) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            AnimationUtil.applyDialogBlurIn(dialog)
-        } else {
-            // Android 8.0-11: 截取 Activity 并缩放实现模糊
-            applyLegacyBlur(dialog)
-        }
-    }
-
-    /** API 26-30：通过截屏 + 多级缩放模拟背景模糊（类似毛玻璃效果） */
-    private fun applyLegacyBlur(dialog: Dialog) {
-        try {
-            val rootView = window.decorView.rootView
-            val vw = rootView.width
-            val vh = rootView.height
-            if (vw <= 0 || vh <= 0) return
-
-            // 1. 截取当前 Activity 渲染
-            val capture = Bitmap.createBitmap(vw, vh, Bitmap.Config.ARGB_8888)
-            rootView.draw(Canvas(capture))
-
-            // 2. 大幅缩小（6%）→ 丢失细节 = 模糊
-            val smallW = (vw * 0.06f).toInt().coerceAtLeast(4)
-            val smallH = (vh * 0.06f).toInt().coerceAtLeast(4)
-            val small = Bitmap.createScaledBitmap(capture, smallW, smallH, true)
-            capture.recycle()
-
-            // 3. 放大回原始尺寸（双线性插值 → 平滑渐变）
-            val blurred = Bitmap.createScaledBitmap(small, vw, vh, true)
-            small.recycle()
-
-            dialog.window?.setBackgroundDrawable(BitmapDrawable(resources, blurred))
-        } catch (e: Exception) {
-            Log.w(TAG, "Legacy blur failed: ${e.message}")
-        }
-    }
-
-    /** 对弹窗根布局动态应用当前主题色 + 淡淡阴影边框 */
-    private fun applyThemeToDialogRoot(dialog: Dialog) {
-        val root = dialog.findViewById<ViewGroup>(android.R.id.content)
-            ?.let { if (it.childCount > 0) it.getChildAt(0) as? ViewGroup else it } ?: return
-        val ctx = this@MainActivity
-        val textPrimary = ThemeColors.textPrimary(ctx)
-        val textSecondary = ThemeColors.textSecondary(ctx)
-        val accent = ThemeColors.accent(ctx)
-        val iconTint = ThemeColors.iconTint(ctx)
-        val btnBg = ThemeColors.btnBg(ctx)
-        val accentSecondary = ThemeColors.accentSecondary(ctx)
-        val cardBg = ThemeColors.cardBg(ctx)
-
-        // 根布局背景 → 主题卡片色 + 2dp 明显描边（增强立体感）
-        val borderColor = if (SPUtil.getNightMode(ctx) == AppCompatDelegate.MODE_NIGHT_YES)
-            0x4DFFFFFF.toInt() else 0x35000000
-        root.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(cardBg)
-            cornerRadius = 16f
-            setStroke(2, borderColor)
-        }
-        // 弹窗 elevation 阴影加重
-        root.elevation = 24f
-
-        // 遍历子控件着色
-        applyThemeToViewTree(root, textPrimary, textSecondary, accent, iconTint, btnBg, accentSecondary, cardBg)
-    }
-
-    /** 递归遍历 Dialog 视图树，应用主题色 */
-    private fun applyThemeToViewTree(
-        parent: ViewGroup,
-        textPrimary: Int,
-        textSecondary: Int,
-        accent: Int,
-        iconTint: Int,
-        btnBg: Int,
-        accentSecondary: Int,
-        cardBg: Int
-    ) {
-        for (i in 0 until parent.childCount) {
-            val child = parent.getChildAt(i)
-            when (child) {
-                is MaterialButton -> {
-                    if (child.strokeWidth > 0) {
-                        // 描边按钮（如 "稍后"、"修改连接配置"）
-                        child.setTextColor(textPrimary)
-                        child.strokeColor = ColorStateList.valueOf(textSecondary)
-                        child.iconTint = ColorStateList.valueOf(iconTint)
-                    } else {
-                        // 实色按钮（如 "关闭"、"下载更新"、"重新连接"）
-                        child.backgroundTintList = ColorStateList.valueOf(btnBg)
-                        child.setTextColor(0xFFFFFFFF.toInt())
-                        child.iconTint = ColorStateList.valueOf(0xFFFFFFFF.toInt())
-                    }
-                }
-                is Button -> {
-                    // 普通按钮（如 SetupActivity 里的确认按钮）
-                    child.backgroundTintList = ColorStateList.valueOf(btnBg)
-                    child.setTextColor(0xFFFFFFFF.toInt())
-                }
-                is TextView -> {
-                    // 小字(≤13sp) → 辅色，大字 → 主色
-                    child.setTextColor(if (child.textSize <= 13f) textSecondary else textPrimary)
-                }
-                is ImageView -> {
-                    // 标题图标 → 图标着色
-                    child.setColorFilter(iconTint)
-                }
-                is ViewGroup -> {
-                    // 递归处理子 ViewGroup，但跳过动态内容容器（由代码填充）
-                    val id = child.id
-                    if (id != R.id.common_dialog_content) {
-                        applyThemeToViewTree(child, textPrimary, textSecondary, accent, iconTint, btnBg, accentSecondary, cardBg)
-                    }
-                }
-            }
-        }
     }
 
     /** 弹窗防拥堵检查：返回 true 允许创建/显示 */
@@ -979,7 +817,7 @@ class MainActivity : AppCompatActivity() {
         // 如果当前已有正在显示的弹窗且不是 error 弹窗，禁止开启新的
         // 增加 null 判定，确保关闭过程中也能及时重置状态
         val isShowing = activeDialog?.isShowing == true
-        if (isShowing && activeDialogType != "error") {
+        if (isShowing && viewModel.activeDialogType.value != "error") {
             return false
         }
         val now = System.currentTimeMillis()
@@ -995,25 +833,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun dismissActiveDialog() {
-        try { activeDialog?.dismiss() } catch (_: Exception) {}
+        try { activeDialog?.dismiss() } catch (_: Exception) {
+            // Dialog.dismiss 在 Window 已销毁时可能抛异常，非关键错误
+        }
         activeDialog = null
-        activeDialogType = null
+        viewModel.setActiveDialogType(null)
     }
 
     /** 数据刷新后自动更新已打开的弹窗内容 */
     private fun refreshActiveDialog(data: WifiEntity) {
         if (activeDialog == null || !activeDialog!!.isShowing) {
             activeDialog = null
-            activeDialogType = null
+            viewModel.setActiveDialogType(null)
             return
         }
         
         // 尝试获取通用内容容器
         val content = try { 
             activeDialog!!.findViewById<LinearLayout>(R.id.common_dialog_content) 
-        } catch (_: Exception) { null } ?: return
+        } catch (_: Exception) {
+            // 弹窗尚未完全初始化时 findViewById 可能失败
+            null
+        } ?: return
 
-        when (activeDialogType) {
+        when (viewModel.activeDialogType.value) {
             "temperature" -> {
                 // 精细化缓存：使用 hashCode 校验数据对象是否有任何变化
                 val currentHash = data.cpuTempList.hashCode().toLong()
@@ -1216,7 +1059,9 @@ class MainActivity : AppCompatActivity() {
         try {
             val appVersion = packageManager.getPackageInfo(packageName, 0).versionName
             addView(keyValueView("应用版本", "v$appVersion"))
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+            // getPackageInfo 失败，不显示应用版本行（非关键）
+        }
         if (data.appVer.isNotEmpty()) addView(keyValueView("接口版本", data.appVer))
         if (data.appVerCode.isNotEmpty()) addView(keyValueView("构建代码", data.appVerCode))
 

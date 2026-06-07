@@ -5,6 +5,12 @@ import android.content.SharedPreferences
 import android.content.res.Configuration
 
 object SPUtil {
+
+    // ── 预编译 Regex：地址解析 ──
+    private val PROTOCOL_RE = Regex("^(https?)://([^:/]+)(?::(\\d+))?/?$")
+    private val HOST_PORT_RE = Regex("^([^:/]+)(?::(\\d+))?$")
+    private val IPV4_RE = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""")
+
     fun getSp(ctx: Context): SharedPreferences {
         return ctx.getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
     }
@@ -295,8 +301,7 @@ object SPUtil {
         val trimmed = raw.trim()
 
         // 1) 带协议前缀：http://host:port 或 https://host:port
-        val protocolRegex = Regex("^(https?)://([^:/]+)(?::(\\d+))?/?$")
-        protocolRegex.find(trimmed)?.let { m ->
+        PROTOCOL_RE.find(trimmed)?.let { m ->
             val protocol = m.groupValues[1]
             val host = m.groupValues[2]
             val portStr = m.groupValues[3]
@@ -306,8 +311,7 @@ object SPUtil {
         }
 
         // 2) 无协议：host:port 或 host
-        val hostPortRegex = Regex("^([^:/]+)(?::(\\d+))?$")
-        hostPortRegex.find(trimmed)?.let { m ->
+        HOST_PORT_RE.find(trimmed)?.let { m ->
             val host = m.groupValues[1]
             val explicitPort = m.groupValues[2].toIntOrNull()
             val portExplicit = explicitPort != null
@@ -329,7 +333,7 @@ object SPUtil {
 
     /** 判断是否为私有/本地 IP */
     internal fun isPrivateOrLocalIp(host: String): Boolean {
-        val ipPattern = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""")
+        val ipPattern = IPV4_RE
         val m = ipPattern.find(host) ?: return false
         val o1 = m.groupValues[1].toIntOrNull() ?: return false
         val o2 = m.groupValues[2].toIntOrNull() ?: return false

@@ -1,33 +1,37 @@
 package com.ufi_toolswidget
 
 import android.Manifest
-import android.app.Dialog
 import android.app.DownloadManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.content.res.ColorStateList
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.Window
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.core.view.WindowCompat
 import com.google.android.material.button.MaterialButton
-import com.ufi_toolswidget.util.*
+import com.ufi_toolswidget.util.AnimationUtil
+import com.ufi_toolswidget.util.CommonDialogHelper
+import com.ufi_toolswidget.util.CommonSettingsItemHelper
+import com.ufi_toolswidget.util.DebugLogger
+import com.ufi_toolswidget.util.PopupViewUtil
+import com.ufi_toolswidget.util.ScaleTouchListener
+import com.ufi_toolswidget.util.SPUtil
+import com.ufi_toolswidget.util.ThemeChangeNotifier
+import com.ufi_toolswidget.util.ThemeColors
+import com.ufi_toolswidget.util.ThemeUtil
+import com.ufi_toolswidget.util.UpdateChecker
 import java.io.File
 
 class AboutActivity : AppCompatActivity() {
@@ -46,10 +50,6 @@ class AboutActivity : AppCompatActivity() {
     private var versionClickCount = 0
     private var versionClickLastTime = 0L
 
-    // 详情弹窗相关
-    private var activeDialog: Dialog? = null
-    private var activeDialogType: String? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_about)
@@ -58,7 +58,6 @@ class AboutActivity : AppCompatActivity() {
             ThemeUtil.applyTheme(this@AboutActivity, ThemeUtil.PageType.SECONDARY)
             refreshAppIcon()
             currentMirror = SPUtil.getUpdateMirror(this@AboutActivity)
-            refreshMirrorChips()
         }
         
         // 沉浸式入场动画：淡出旧画面截图
@@ -121,21 +120,18 @@ class AboutActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
-        // 更新镜像源选择器
-        initMirrorSelector()
+        // 加载当前镜像源设置
+        currentMirror = SPUtil.getUpdateMirror(this)
+
+        // 更新设置齿轮按钮
+        findViewById<ImageView>(R.id.iv_update_settings).setOnClickListener {
+            showUpdateSettingsDialog()
+        }
 
         // 检查更新按钮
         val btnCheck = findViewById<MaterialButton>(R.id.btn_check_update)
         val tvUpdateStatus = findViewById<TextView>(R.id.tv_update_status)
         val progressUpdate = findViewById<ProgressBar>(R.id.progress_update)
-
-        // 自动检查更新开关
-        findViewById<View>(R.id.item_auto_update)?.apply {
-            findViewById<TextView>(R.id.common_switch_label).text = "启动时自动检查更新"
-            ThemeUtil.setupSwitch(this, SPUtil.getAutoCheckUpdate(this@AboutActivity)) { isChecked ->
-                SPUtil.setAutoCheckUpdate(this@AboutActivity, isChecked)
-            }
-        }
 
         btnCheck.apply {
             setOnClickListener {
@@ -179,31 +175,14 @@ class AboutActivity : AppCompatActivity() {
     // ==================== 镜像源选择器 ====================
     private var currentMirror: Int = 0 // 0=官方, 1=镜像
 
-    private fun initMirrorSelector() {
-        currentMirror = SPUtil.getUpdateMirror(this)
-        val chipOfficial = findViewById<TextView>(R.id.chip_mirror_official)
-        val chipProxy = findViewById<TextView>(R.id.chip_mirror_proxy)
-
-        fun selectMirror(mirror: Int) {
-            currentMirror = mirror
-            SPUtil.setUpdateMirror(this, mirror)
-            refreshMirrorChips()
-            // 切换镜像源时清除旧的检查状态
-            findViewById<TextView>(R.id.tv_update_status).visibility = View.GONE
-            val name = if (mirror == 0) "GitHub 官方" else "国内镜像"
-            Toast.makeText(this, "已切换至 $name 源", Toast.LENGTH_SHORT).show()
-        }
-
-        chipOfficial.setOnClickListener { selectMirror(0) }
-        chipProxy.setOnClickListener { selectMirror(1) }
-
-        refreshMirrorChips()
-    }
-
-    private fun refreshMirrorChips() {
+    /**
+     * 显示更新设置弹窗（镜像源 + 自动检查更新开关 + 检查更新按钮）
+     */
+    private fun showUpdateSettingsDialog() {
         val accent = ThemeColors.accent(this)
         val cardBg = ThemeColors.cardBg(this)
         val textPrimary = ThemeColors.textPrimary(this)
+        val textSecondary = ThemeColors.textSecondary(this)
         val chipRadius = 18f * resources.displayMetrics.density
 
         val chipSelected = GradientDrawable().apply {
@@ -217,15 +196,105 @@ class AboutActivity : AppCompatActivity() {
             cornerRadius = chipRadius
         }
 
-        findViewById<TextView>(R.id.chip_mirror_official).apply {
-            background = if (currentMirror == 0) chipSelected else chipUnselected
-            setTextColor(if (currentMirror == 0) 0xFFFFFFFF.toInt() else textPrimary)
-        }
-        findViewById<TextView>(R.id.chip_mirror_proxy).apply {
-            background = if (currentMirror == 1) chipSelected else chipUnselected
-            setTextColor(if (currentMirror == 1) 0xFFFFFFFF.toInt() else textPrimary)
-        }
+        CommonDialogHelper.showCommonDialog(
+            this,
+            title = "更新设置",
+            iconRes = R.drawable.ic_settings,
+            onFill = { content ->
+                content.setPadding(0, dp2px(4), 0, 0)
+
+                // ── 镜像源选择 ──
+                content.addView(TextView(this).apply {
+                    text = "更新源"
+                    setTextColor(textSecondary)
+                    textSize = 12f
+                    setPadding(0, 0, 0, dp2px(8))
+                })
+
+                val chipsRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp2px(38)
+                    )
+                }
+                val chipOfficial = TextView(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.MATCH_PARENT, 1f
+                    ).apply { marginEnd = dp2px(6) }
+                    gravity = Gravity.CENTER
+                    text = "GitHub 官方"
+                    textSize = 13f
+                    isClickable = true
+                    isFocusable = true
+                }
+                val chipProxy = TextView(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.MATCH_PARENT, 1f
+                    ).apply { marginStart = dp2px(6) }
+                    gravity = Gravity.CENTER
+                    text = "国内镜像"
+                    textSize = 13f
+                    isClickable = true
+                    isFocusable = true
+                }
+
+                // 刷新 Chip 样式
+                fun refreshChips() {
+                    chipOfficial.background = if (currentMirror == 0) chipSelected else chipUnselected
+                    chipOfficial.setTextColor(if (currentMirror == 0) 0xFFFFFFFF.toInt() else textPrimary)
+                    chipProxy.background = if (currentMirror == 1) chipSelected else chipUnselected
+                    chipProxy.setTextColor(if (currentMirror == 1) 0xFFFFFFFF.toInt() else textPrimary)
+                }
+
+                chipOfficial.setOnClickListener {
+                    currentMirror = 0
+                    SPUtil.setUpdateMirror(this@AboutActivity, 0)
+                    refreshChips()
+                    findViewById<TextView>(R.id.tv_update_status).visibility = View.GONE
+                    Toast.makeText(this@AboutActivity, "已切换至 GitHub 官方源", Toast.LENGTH_SHORT).show()
+                }
+                chipProxy.setOnClickListener {
+                    currentMirror = 1
+                    SPUtil.setUpdateMirror(this@AboutActivity, 1)
+                    refreshChips()
+                    findViewById<TextView>(R.id.tv_update_status).visibility = View.GONE
+                    Toast.makeText(this@AboutActivity, "已切换至 国内镜像源", Toast.LENGTH_SHORT).show()
+                }
+
+                refreshChips()
+
+                chipsRow.addView(chipOfficial)
+                chipsRow.addView(chipProxy)
+                content.addView(chipsRow)
+
+                // ── 分隔线 ──
+                content.addView(View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, 1
+                    ).apply {
+                        topMargin = dp2px(14)
+                        bottomMargin = dp2px(14)
+                    }
+                    setBackgroundColor(ThemeColors.divider(this@AboutActivity))
+                })
+
+                // ── 自动检查更新开关 ──
+                content.addView(CommonSettingsItemHelper.createSwitchRow(
+                    context = this,
+                    label = "启动时自动检查更新",
+                    initialChecked = SPUtil.getAutoCheckUpdate(this@AboutActivity),
+                    onToggle = { checked ->
+                        SPUtil.setAutoCheckUpdate(this@AboutActivity, checked)
+                    }
+                ))
+            },
+            primaryBtnText = "完成"
+        )
     }
+
+    private fun dp2px(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
+
+    /** 网络连接失败时弹窗提示切换国内镜像源 */
 
     /** 网络连接失败时弹窗提示切换国内镜像源 */
     private fun showMirrorSwitchDialog() {
@@ -239,53 +308,10 @@ class AboutActivity : AppCompatActivity() {
             onConfirm = {
                 currentMirror = 1
                 SPUtil.setUpdateMirror(this, 1)
-                refreshMirrorChips()
+                findViewById<TextView>(R.id.tv_update_status).visibility = View.GONE
                 Toast.makeText(this, "已切换至国内镜像源，请重新检查更新", Toast.LENGTH_SHORT).show()
             }
         )
-    }
-
-    /**
-     * 显示通用主题弹窗的公共逻辑 (Ported from MainActivity)
-     */
-    private fun showCommonDialog(
-        type: String,
-        title: String,
-        iconRes: Int,
-        onFill: (LinearLayout) -> Unit,
-        primaryBtnText: String = "关闭",
-        onPrimaryClick: ((Dialog) -> Unit)? = null,
-        secondaryBtnText: String? = null,
-        onSecondaryClick: ((Dialog) -> Unit)? = null
-    ): Dialog? {
-        val dialog = createThemedDialog(R.layout.layout_common_dialog, dialogType = type)
-        
-        dialog.findViewById<TextView>(R.id.common_dialog_title).text = title
-        dialog.findViewById<ImageView>(R.id.common_dialog_icon).setImageResource(iconRes)
-        
-        val content = dialog.findViewById<LinearLayout>(R.id.common_dialog_content)
-        content.removeAllViews()
-        onFill(content)
-        
-        val btnPrimary = dialog.findViewById<com.google.android.material.button.MaterialButton>(R.id.common_dialog_btn_primary)
-        btnPrimary.text = primaryBtnText
-        btnPrimary.setOnClickListener {
-            if (onPrimaryClick != null) onPrimaryClick(dialog) else dialog.dismiss()
-        }
-        
-        val btnSecondary = dialog.findViewById<com.google.android.material.button.MaterialButton>(R.id.common_dialog_btn_secondary)
-        if (secondaryBtnText != null) {
-            btnSecondary.visibility = View.VISIBLE
-            btnSecondary.text = secondaryBtnText
-            btnSecondary.setOnClickListener {
-                onSecondaryClick?.invoke(dialog) ?: dialog.dismiss()
-            }
-        } else {
-            btnSecondary.visibility = View.GONE
-        }
-        
-        dialog.show()
-        return dialog
     }
 
     /**
@@ -304,8 +330,8 @@ class AboutActivity : AppCompatActivity() {
             }
         }
 
-        showCommonDialog(
-            type = "update",
+        CommonDialogHelper.showCommonDialog(
+            this,
             title = "更新可用",
             iconRes = R.drawable.ic_check,
             onFill = { content ->
@@ -323,56 +349,6 @@ class AboutActivity : AppCompatActivity() {
             },
             secondaryBtnText = "稍后"
         )
-    }
-
-    // ===== 弹窗框架 (Ported from MainActivity) =====
-
-    private fun createThemedDialog(layoutRes: Int, widthRatio: Float = 0.92f, dialogType: String): Dialog {
-        if (activeDialog?.isShowing == true && activeDialogType == dialogType) {
-            return activeDialog!!
-        }
-        dismissActiveDialog()
-
-        val dialog = object : Dialog(this) {
-            fun realDismiss() {
-                super.dismiss()
-                activeDialog = null
-                activeDialogType = null
-            }
-
-            override fun dismiss() {
-                if (window == null) {
-                    realDismiss()
-                    return
-                }
-                activeDialogType = null
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    AnimationUtil.applyDialogBlurOut(this) { realDismiss() }
-                } else {
-                    realDismiss()
-                }
-            }
-        }
-
-        dialog.setContentView(layoutRes)
-        PopupViewUtil.applyThemeToDialogRoot(this, dialog)
-
-        // ── 动态高度适配 ──
-        PopupViewUtil.autoAdjustDialogHeight(this, dialog, widthRatio)
-
-        // ── 动态模糊背景：API 31+ 原生模糊 ──
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            AnimationUtil.applyDialogBlurIn(dialog)
-        }
-
-        dialog.show()
-        return dialog
-    }
-
-    private fun dismissActiveDialog() {
-        try { activeDialog?.dismiss() } catch (_: Exception) {}
-        activeDialog = null
-        activeDialogType = null
     }
 
     // ===== 下载与安装逻辑 =====
@@ -487,7 +463,6 @@ class AboutActivity : AppCompatActivity() {
         ThemeUtil.applyTheme(this, ThemeUtil.PageType.SECONDARY)
         refreshAppIcon()
         currentMirror = SPUtil.getUpdateMirror(this)
-        refreshMirrorChips()
     }
 
     /** 刷新应用图标显示，确保不被主题滤镜覆盖 */
@@ -504,7 +479,7 @@ class AboutActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         ThemeChangeNotifier.unregister(this, themeChangeReceiver)
-        downloadReceiver?.let { unregisterReceiver(it) }
+        downloadReceiver?.let { try { unregisterReceiver(it) } catch (_: Exception) {} }
         super.onDestroy()
     }
 }

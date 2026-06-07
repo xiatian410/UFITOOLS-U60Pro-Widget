@@ -33,6 +33,18 @@ local.properties
 # Logs / Temp / Debug
 *.log
 build_log.*
+build_output.txt
+stderr.txt
+stdout.txt
 logs/
 *.hprof
 *.tmp
+
+# IDE personal files
+.idea/compiler.xml
+.idea/runConfigurations.xml
+.idea/codeStyles/
+
+# Dev helpers (not source)
+/scripts/
+/docs/

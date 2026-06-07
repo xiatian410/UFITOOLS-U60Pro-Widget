@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 圆角矩形 -->
+    <path
+        android:fillColor="#FF777777"
+        android:pathData="M5,4 L19,4 C21.2,4 23,5.8 23,8 L23,16 C23,18.2 21.2,20 19,20 L5,20 C2.8,20 1,18.2 1,16 L1,8 C1,5.8 2.8,4 5,4 Z M5,6.5 C4.17,6.5 3.5,7.17 3.5,8 L3.5,16 C3.5,16.83 4.17,17.5 5,17.5 L19,17.5 C19.83,17.5 20.5,16.83 20.5,16 L20.5,8 C20.5,7.17 19.83,6.5 19,6.5 Z" />
+    <!-- 右上角小剪刀/裁剪标记 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M6,6 L9,9 M9,6 L6,9" />
+</vector>

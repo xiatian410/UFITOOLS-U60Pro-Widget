@@ -92,5 +92,10 @@
             layout="@layout/layout_common_setting_item"
             android:id="@+id/item_widget_bg_opacity" />
 
+        <!-- ========== 圆角裁剪兜底（开关，默认开启） ========== -->
+        <include
+            layout="@layout/layout_common_switch_item"
+            android:id="@+id/item_widget_clip_to_outline" />
+
     </LinearLayout>
 </ScrollView>
