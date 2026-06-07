@@ -9,6 +9,12 @@ object SPUtil {
         return ctx.getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
     }
 
+    /**
+     * 保存 WiFi 数据到 SharedPreferences（线程安全，同步写入）。
+     * 使用 @Synchronized + commit()，避免 Worker 与前台并发调用时
+     * apply() 异步写入导致的数据丢失。
+     */
+    @Synchronized
     fun saveData(ctx: Context, data: WifiEntity) {
         val time = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
         getSp(ctx).edit()
@@ -38,7 +44,7 @@ object SPUtil {
             .putString("firmware_ver", data.firmwareVer)
             .putBoolean("need_token", data.needToken)
             .putString("update_time", time)
-            .apply()
+            .commit()
     }
 
     // 认证与配置
@@ -105,10 +111,81 @@ object SPUtil {
     fun isFirstRun(ctx: Context) = getSp(ctx).getBoolean("is_first_run", true)
     fun setFirstRun(ctx: Context, value: Boolean) = getSp(ctx).edit().putBoolean("is_first_run", value).apply()
 
-    // ==================== Worker 失败状态 ====================
+    // ==================== Worker 失败状态（线程安全读写） ====================
     /** 失败原因类型：空字符串=未失败, "network"=网络不通, "api"=端口/Token错误 */
     fun getWorkerStopReason(ctx: Context) = getSp(ctx).getString("worker_stop_reason", "") ?: ""
-    fun setWorkerStopReason(ctx: Context, reason: String) = getSp(ctx).edit().putString("worker_stop_reason", reason).apply()
+
+    /** worker 是否因连续失败被停止 */
+    fun isWorkerStopped(ctx: Context) = getSp(ctx).getBoolean("worker_stopped_by_failure", false)
+
+    /** API 连续失败计数 */
+    fun getApiFailureCount(ctx: Context) = getSp(ctx).getInt("worker_api_failure_count", 0)
+
+    /** 网络连续失败计数 */
+    fun getNetworkFailureCount(ctx: Context) = getSp(ctx).getInt("worker_network_failure_count", 0)
+
+    /** 获取失败原因汇总（供外部 UI 显示） */
+    fun getWorkerFailureSummary(ctx: Context): String {
+        if (!isWorkerStopped(ctx)) return ""
+        return getWorkerStopReason(ctx).ifEmpty { "unknown" }
+    }
+
+    /** 原子递增网络失败计数，返回递增后的值 */
+    @Synchronized
+    fun incrementNetworkFailureCount(ctx: Context): Int {
+        val sp = getSp(ctx)
+        val count = sp.getInt("worker_network_failure_count", 0) + 1
+        sp.edit().putInt("worker_network_failure_count", count).commit()
+        return count
+    }
+
+    /** 原子递增 API 失败计数，返回递增后的值 */
+    @Synchronized
+    fun incrementApiFailureCount(ctx: Context): Int {
+        val sp = getSp(ctx)
+        val count = sp.getInt("worker_api_failure_count", 0) + 1
+        sp.edit().putInt("worker_api_failure_count", count).commit()
+        return count
+    }
+
+    /** 仅重置网络失败计数（ping 恢复时） */
+    @Synchronized
+    fun resetNetworkFailureCount(ctx: Context) {
+        getSp(ctx).edit().putInt("worker_network_failure_count", 0).commit()
+    }
+
+    /** 重置所有失败状态（手动刷新、配置变更、Worker 启动时调用） */
+    @Synchronized
+    fun resetWorkerFailureState(ctx: Context) {
+        val sp = getSp(ctx)
+        val prevStopped = sp.getBoolean("worker_stopped_by_failure", false)
+        sp.edit()
+            .putInt("worker_api_failure_count", 0)
+            .putInt("worker_network_failure_count", 0)
+            .putBoolean("worker_stopped_by_failure", false)
+            .putString("worker_stop_reason", "")
+            .commit()
+        DebugLogger.i("SPUtil", "resetWorkerFailureState called (prevStopped=$prevStopped)")
+    }
+
+    /** 标记网络不通导致的 Worker 停止 */
+    @Synchronized
+    fun markWorkerStoppedNetwork(ctx: Context) {
+        getSp(ctx).edit()
+            .putBoolean("worker_stopped_by_failure", true)
+            .putInt("worker_api_failure_count", 0)
+            .putString("worker_stop_reason", "network")
+            .commit()
+    }
+
+    /** 标记 API 连续失败导致的 Worker 停止 */
+    @Synchronized
+    fun markWorkerStoppedApi(ctx: Context) {
+        getSp(ctx).edit()
+            .putBoolean("worker_stopped_by_failure", true)
+            .putString("worker_stop_reason", "api")
+            .commit()
+    }
 
     // ==================== 设备连接配置 ====================
     const val DEFAULT_DEVICE_ADDRESS = "192.168.0.1:2333"
@@ -419,5 +496,12 @@ object SPUtil {
 
     /** 保存小组件背景透明度 */
     fun setWidgetBgOpacity(ctx: Context, opacity: Int) = getSp(ctx).edit().putInt("widget_bg_opacity", opacity).apply()
+
+    // ==================== 小组件圆角裁剪兜底开关 ====================
+    /** 是否启用小组件圆角处理（默认关闭）。
+     *  开启后 Bitmap 裁剪 + clipToOutline + 圆角 drawable 全链路圆角，
+     *  适配原生/国际版桌面。国产桌面通常已自带圆角，无需开启。 */
+    fun getWidgetClipToOutline(ctx: Context) = getSp(ctx).getBoolean("widget_clip_to_outline", false)
+    fun setWidgetClipToOutline(ctx: Context, enabled: Boolean) = getSp(ctx).edit().putBoolean("widget_clip_to_outline", enabled).apply()
 
 }
