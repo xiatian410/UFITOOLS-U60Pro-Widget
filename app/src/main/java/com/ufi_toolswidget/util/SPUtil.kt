@@ -242,7 +242,7 @@ object SPUtil {
      * 构建完整 Base URL：
      * - 显式协议（http:// 或 https://）→ 直接使用
      * - 私有 IP → http://
-     * - 域名/公网IP → 查缓存协议；若已探测到则用对应协议，否则默认 http://
+     * - 域名/公网IP → 查缓存协议；若已探测到则用对应协议，否则默认 https://
      */
     fun buildBaseUrl(ctx: Context): String {
         val raw = getDeviceAddress(ctx)
@@ -274,6 +274,7 @@ object SPUtil {
     const val DEFAULT_GOFORM_COMMAND_PATH = "/api/goform/goform_get_cmd_process"
     const val DEFAULT_NEED_TOKEN_PATH = "/api/need_token"
     const val DEFAULT_VERSION_INFO_PATH = "/api/version_info"
+    //UFI-TOOLS文档中注明的固定秘钥：https://github.com/kanoqwq/UFI-TOOLS/blob/http-server-version/API_Doc.md
     const val DEFAULT_SECRET_KEY = "minikano_kOyXz0Ciz4V7wR0IeKmJFYFQ20jd"
 
     fun getAtCommandPath(ctx: Context) = getSp(ctx).getString("at_command_path", DEFAULT_AT_COMMAND_PATH) ?: DEFAULT_AT_COMMAND_PATH
@@ -323,12 +324,12 @@ object SPUtil {
         return parseAddress(DEFAULT_DEVICE_ADDRESS)
     }
 
-    /** 根据主机类型决定协议与默认端口（仅用于未探测时的默认值） */
+    /** 根据主机类型决定协议与默认端口（仅用于未探测时的默认值）。公网域名默认 https://，协议探测不通过时自动回退 http://。 */
     private fun resolveProtocol(host: String, explicitPort: Int?): Pair<String, Int> {
         if (isPrivateOrLocalIp(host)) {
             return "http" to (explicitPort ?: 2333)
         }
-        return "http" to (explicitPort ?: 80)
+        return "https" to (explicitPort ?: 443)
     }
 
     /** 判断是否为私有/本地 IP */

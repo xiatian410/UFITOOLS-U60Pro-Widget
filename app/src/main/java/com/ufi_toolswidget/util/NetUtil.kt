@@ -29,8 +29,6 @@ object NetUtil {
             }).build()
     }
 
-    const val BASE_URL = "http://192.168.0.1:2333"
-
     fun saveCookies(host: String, cookies: List<Cookie>) {
         cookieStore[host] = cookies
     }
