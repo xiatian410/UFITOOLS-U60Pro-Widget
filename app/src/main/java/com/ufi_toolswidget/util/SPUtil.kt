@@ -11,6 +11,13 @@ object SPUtil {
     private val HOST_PORT_RE = Regex("^([^:/]+)(?::(\\d+))?$")
     private val IPV4_RE = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""")
 
+    // ── 缓存 SimpleDateFormat：避免每次 saveData 都重新创建（线程安全） ──
+    private val saveTimeFormat = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
+
+    // ── 缓存 baseUrl 构建结果：地址不变时跳过 regex 解析 + SP 读取 ──
+    @Volatile private var cachedBaseUrl: String? = null
+    @Volatile private var cachedBaseUrlKey: String? = null  // address+protocol 组合作为 cache key
+
     fun getSp(ctx: Context): SharedPreferences {
         return ctx.getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
     }
@@ -22,7 +29,7 @@ object SPUtil {
      */
     @Synchronized
     fun saveData(ctx: Context, data: WifiEntity) {
-        val time = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        val time = synchronized(saveTimeFormat) { saveTimeFormat.format(java.util.Date()) }
         // 计算数据字段哈希，供小组件渲染去重使用（避免每次渲染都读 14 个 SP 字段）
         val dataHash = computeWidgetDataHash(data, time)
         getSp(ctx).edit()
@@ -71,11 +78,15 @@ object SPUtil {
         h = 31 * h + data.signal.hashCode()
         h = 31 * h + data.temp.hashCode()
         h = 31 * h + data.battery.hashCode()
+        h = 31 * h + data.batteryPercent  // 电量百分比也应参与哈希
         h = 31 * h + data.cpu.hashCode()
         h = 31 * h + data.mem.hashCode()
         h = 31 * h + data.netType.hashCode()
         h = 31 * h + data.appVerCode.hashCode()
         h = 31 * h + data.batteryCurrent.hashCode()
+        h = 31 * h + data.batteryVoltage.hashCode()       // 电池电压
+        h = 31 * h + data.internalStorage.hashCode()      // 内部存储
+        h = 31 * h + data.clientIp.hashCode()             // 客户端 IP
         h = 31 * h + time.hashCode()
         return h
     }
@@ -168,6 +179,36 @@ object SPUtil {
         if (getShowBattery(ctx)) count++
         if (getShowMem(ctx)) count++
         return count
+    }
+
+    // ── 小组件渲染配置批量读取（减少多次 SP 读取开销） ──
+
+    /** 小组件显隐 + 外观配置一次性读取结果，供渲染时使用 */
+    data class WidgetRenderConfig(
+        val showFlow: Boolean, val showSignal: Boolean, val showTemp: Boolean,
+        val showCpu: Boolean, val showModel: Boolean, val showTime: Boolean,
+        val showBattery: Boolean, val showMem: Boolean,
+        val isDark: Boolean, val shouldClip: Boolean,
+        val bgOpacity: Int, val bgImageUri: String
+    )
+
+    /** 一次性读取所有小组件渲染配置，避免多次独立 SP 读取 */
+    fun loadWidgetRenderConfig(ctx: Context): WidgetRenderConfig {
+        val sp = getSp(ctx)
+        return WidgetRenderConfig(
+            showFlow = sp.getBoolean("show_flow", true),
+            showSignal = sp.getBoolean("show_signal", true),
+            showTemp = sp.getBoolean("show_temp", true),
+            showCpu = sp.getBoolean("show_cpu", true),
+            showModel = sp.getBoolean("show_model", true),
+            showTime = sp.getBoolean("show_time", true),
+            showBattery = sp.getBoolean("show_battery", true),
+            showMem = sp.getBoolean("show_mem", true),
+            isDark = isWidgetDark(ctx),
+            shouldClip = sp.getBoolean("widget_clip_to_outline", false),
+            bgOpacity = sp.getInt("widget_bg_opacity", 100),
+            bgImageUri = sp.getString("widget_bg_image_uri", "") ?: ""
+        )
     }
     
     fun getCachedMonthlyData(ctx: Context): Long = getSp(ctx).getLong("cached_monthly_data", 0L)
@@ -268,6 +309,7 @@ object SPUtil {
             .putString("device_address", v.ifEmpty { DEFAULT_DEVICE_ADDRESS })
             .putString("device_protocol", "auto")  // 地址变了，旧探测结果作废
             .apply()
+        invalidateBaseUrlCache()  // 地址变更，清除 baseUrl 缓存
         invalidateResponseCaches(ctx)  // 设备换了，旧响应缓存全部作废
     }
 
@@ -306,12 +348,19 @@ object SPUtil {
      */
     fun buildBaseUrl(ctx: Context): String {
         val raw = getDeviceAddress(ctx)
+        val protocol = getDeviceProtocol(ctx)
+        val cacheKey = "$raw|$protocol"
+        // 缓存命中：地址和协议未变，直接返回上次构建结果
+        if (cacheKey == cachedBaseUrlKey && cachedBaseUrl != null) {
+            return cachedBaseUrl!!
+        }
+
         val (parsedProtocol, host, parsedPort, protocolExplicit, portExplicit) = parseAddress(raw)
 
-        val protocol = if (protocolExplicit) {
+        val finalProtocol = if (protocolExplicit) {
             parsedProtocol
         } else {
-            val stored = getDeviceProtocol(ctx)
+            val stored = protocol
             if (stored == "auto") parsedProtocol else stored
         }
 
@@ -319,13 +368,22 @@ object SPUtil {
             parsedPort
         } else {
             when {
-                protocol == "https" -> 443
+                finalProtocol == "https" -> 443
                 isPrivateOrLocalIp(host) -> 2333
                 else -> 80
             }
         }
 
-        return "$protocol://$host:$port/"
+        val result = "$finalProtocol://$host:$port/"
+        cachedBaseUrl = result
+        cachedBaseUrlKey = cacheKey
+        return result
+    }
+
+    /** 清除 baseUrl 缓存（设备地址变更时调用） */
+    fun invalidateBaseUrlCache() {
+        cachedBaseUrl = null
+        cachedBaseUrlKey = null
     }
 
     // ==================== API 接口高级配置 ====================

@@ -51,6 +51,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvStorage: TextView
     private lateinit var tvClientIp: TextView
 
+    // ── 缓存字段：减少每次刷新的重复计算 ──
+    /** 缓存 App 版本号（进程生命周期内不变，避免每次刷新都 IPC 调用 getPackageInfo） */
+    private var cachedAppVersion: String? = null
+    /** 缓存信号图标 ImageView 引用（避免每次刷新 findViewById） */
+    private lateinit var ivAntenna: ImageView
+    /** 上次 UI 数据的快照哈希，用于跳过未变更字段的 UI 更新 */
+    private var lastUiDataHash: Long = 0L
+
     // 保存最后一次获取到的完整数据（用于弹窗详情） — 已迁移至 MainViewModel
     // 线程: 仅限主线程，使用 viewModel.getWifiEntity() 访问
 
@@ -218,12 +226,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun displayAppVersion() {
-        val version = try {
-            packageManager.getPackageInfo(packageName, 0).versionName
-        } catch (e: Exception) {
-            null
-        }
-        tvSubtitle.text = "Version: v${version ?: "--"}"
+        // 使用缓存的版本号，避免重复 IPC 调用
+        tvSubtitle.text = "Version: v${cachedAppVersion ?: "--"}"
     }
 
     private fun setupAnimations() {
@@ -288,6 +292,14 @@ class MainActivity : AppCompatActivity() {
         tvBatterySub = findViewById(R.id.main_tv_battery_sub)
         tvStorage = findViewById(R.id.main_tv_storage)
         tvClientIp = findViewById(R.id.main_tv_client_ip)
+
+        // 缓存信号图标 ImageView 引用，避免每次刷新 findViewById
+        ivAntenna = findViewById(R.id.main_iv_antenna)
+
+        // 缓存 App 版本号（进程生命周期内不变）
+        cachedAppVersion = try {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        } catch (_: Exception) { null }
 
         // 网络 点击 → 网络详情 (RSRP/SINR/RSRQ)
         AnimationUtil.applyScaleClickAnimation(findViewById(R.id.main_item_network)) {
@@ -417,7 +429,10 @@ class MainActivity : AppCompatActivity() {
             5 -> R.drawable.ic_signal_5
             else -> R.drawable.ic_signal_0
         }
-        findViewById<ImageView>(R.id.main_iv_antenna)?.setImageResource(resId)
+        // 使用缓存的 ImageView 引用，避免每次 findViewById
+        if (::ivAntenna.isInitialized) {
+            ivAntenna.setImageResource(resId)
+        }
     }
 
     /** 从 RSRP dBm 信号值推算 0-5 格信号强度 */
@@ -481,15 +496,21 @@ class MainActivity : AppCompatActivity() {
     private fun applyWifiEntityToUi(data: WifiEntity) {
         DebugLogger.logApi(TAG, "applyWifiEntityToUi: model=${data.model}")
 
-        // 设备名称 & 软件版本
+        // ── 数据变更检测：计算核心字段的快速哈希，未变时跳过大部分 UI 更新 ──
+        val quickHash = computeQuickUiHash(data)
+        val dataUnchanged = quickHash == lastUiDataHash && lastUiDataHash != 0L
+        lastUiDataHash = quickHash
+
+        // 设备名称 & 软件版本（使用缓存，避免 IPC 调用）
         val deviceName = data.deviceModel.ifEmpty { data.model }
         if (tvModel.text != deviceName) tvModel.text = deviceName
-        try {
-            val appVersion = packageManager.getPackageInfo(packageName, 0).versionName
-            val subText = "Version v$appVersion"
-            if (tvSubtitle.text != subText) tvSubtitle.text = subText
-        } catch (_: Exception) {
-            // getPackageInfo 在极少数情况下失败，非关键 UI 错误
+        // 使用缓存的 App 版本号，不再每次刷新都调用 packageManager.getPackageInfo()
+        val subText = "Version v${cachedAppVersion ?: "--"}"
+        if (tvSubtitle.text != subText) tvSubtitle.text = subText
+
+        if (dataUnchanged) {
+            DebugLogger.logUi(TAG, "applyWifiEntityToUi: data unchanged, skipping UI updates")
+            return
         }
 
         // 网络制式
@@ -563,6 +584,32 @@ class MainActivity : AppCompatActivity() {
             isDeviceOnline = !WifiWorker.isWorkerStopped(this),
             activity = this
         )
+    }
+
+    /**
+     * 计算主界面核心数据的快速哈希值，用于检测数据是否有变化。
+     * 仅包含会在 UI 上显示的字段，避免不必要的 UI 重绘。
+     * 使用 Long 类型减少碰撞概率（相比 Int.hashCode()）。
+     */
+    private fun computeQuickUiHash(data: WifiEntity): Long {
+        var h = 17L
+        h = 31 * h + data.signal.hashCode()
+        h = 31 * h + data.cpu.hashCode()
+        h = 31 * h + data.mem.hashCode()
+        h = 31 * h + data.dailyFlow.hashCode()
+        h = 31 * h + data.flow.hashCode()
+        h = 31 * h + data.temp.hashCode()
+        h = 31 * h + data.battery.hashCode()
+        h = 31 * h + data.batteryCurrent.hashCode()
+        h = 31 * h + data.internalStorage.hashCode()
+        h = 31 * h + data.clientIp.hashCode()
+        h = 31 * h + data.appVer.hashCode()
+        h = 31 * h + data.appVerCode.hashCode()
+        h = 31 * h + data.firmwareVer.hashCode()
+        h = 31 * h + data.netType.hashCode()
+        h = 31 * h + (data.atNetworkInfo?.carrier.hashCode().toLong())
+        h = 31 * h + (data.atNetworkInfo?.networkType.hashCode().toLong())
+        return h
     }
 
     /** 隐藏加载界面，根据参数决定是否执行淡出动画 */
@@ -918,7 +965,8 @@ class MainActivity : AppCompatActivity() {
 
     /** 数据刷新后自动更新已打开的弹窗内容 */
     private fun refreshActiveDialog(data: WifiEntity) {
-        if (activeDialog == null || !activeDialog!!.isShowing) {
+        val dialog = activeDialog
+        if (dialog == null || !dialog.isShowing) {
             activeDialog = null
             viewModel.setActiveDialogType(null)
             return
@@ -1002,8 +1050,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
-        // 动态数据刷新后，重新评估弹窗高度
-        com.ufi_toolswidget.util.PopupViewUtil.autoAdjustDialogHeight(this, activeDialog!!, 0.92f)
+        // 动态数据刷新后，重新评估弹窗高度（安全守卫：弹窗可能在刷新期间被用户关闭）
+        activeDialog?.let { dialog ->
+            if (dialog.isShowing) {
+                com.ufi_toolswidget.util.PopupViewUtil.autoAdjustDialogHeight(this, dialog, 0.92f)
+            }
+        }
     }
 
     /**

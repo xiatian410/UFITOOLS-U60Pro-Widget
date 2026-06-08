@@ -378,19 +378,27 @@ object NotificationHelper {
         }
     }
 
-    // ─── 防抖 ───
+    // ─── 防抖（原子操作，防止多线程并发触发重复通知） ───
+
+    private val debounceLock = Any()
 
     private fun debouncePass(context: Context, key: String): Boolean {
-        val lastTime = SPUtil.getNotifyLastTime(context, key)
-        val elapsed = System.currentTimeMillis() - lastTime
-        val pass = elapsed >= DEBOUNCE_MS
-        if (!pass) {
-            DebugLogger.logApi(TAG, "debouncePass: key=$key blocked, elapsed=${elapsed / 1000}s < ${DEBOUNCE_MS / 1000}s")
+        synchronized(debounceLock) {
+            val lastTime = SPUtil.getNotifyLastTime(context, key)
+            val elapsed = System.currentTimeMillis() - lastTime
+            val pass = elapsed >= DEBOUNCE_MS
+            if (pass) {
+                // 在同一把锁内更新时间戳，确保并发的第二个调用会被拦截
+                SPUtil.setNotifyLastTime(context, key, System.currentTimeMillis())
+            } else {
+                DebugLogger.logApi(TAG, "debouncePass: key=$key blocked, elapsed=${elapsed / 1000}s < ${DEBOUNCE_MS / 1000}s")
+            }
+            return pass
         }
-        return pass
     }
 
     private fun updateLastNotifyTime(context: Context, key: String) {
+        // 时间戳已在 debouncePass 中原子更新，此方法保留兼容性
         SPUtil.setNotifyLastTime(context, key, System.currentTimeMillis())
     }
 

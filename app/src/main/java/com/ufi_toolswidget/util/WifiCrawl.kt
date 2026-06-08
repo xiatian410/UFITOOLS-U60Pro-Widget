@@ -44,6 +44,22 @@ object WifiCrawl {
     private val CGATT_RE = Regex("""\+CGATT:\s*(\d+)""")
     private val AT_OK_RE = Regex("(^|\n)OK$")
 
+    // ── 预编码 AT 命令常量：避免每次调用 URLEncoder.encode ──
+    private val COPS_CMD = java.net.URLEncoder.encode("AT+COPS?", "UTF-8")
+    private val CESQ_CMD = java.net.URLEncoder.encode("AT+CESQ", "UTF-8")
+    private val CGSN_CMD = java.net.URLEncoder.encode("AT+CGSN", "UTF-8")
+    private val CGEQOS_CMD = java.net.URLEncoder.encode("AT+CGEQOSRDP=1", "UTF-8")
+    private val QENG_CMD = java.net.URLEncoder.encode("AT+QENG=\"servingcell\"", "UTF-8")
+    private val C5GREG_CMD = java.net.URLEncoder.encode("AT+C5GREG?", "UTF-8")
+    private val CGMM_CMD = java.net.URLEncoder.encode("AT+CGMM", "UTF-8")
+    private val CGMR_CMD = java.net.URLEncoder.encode("AT+CGMR", "UTF-8")
+    private val CREG_CMD = java.net.URLEncoder.encode("AT+CREG?", "UTF-8")
+    private val CGCONTRDP_CMD = java.net.URLEncoder.encode("AT+CGCONTRDP=1", "UTF-8")
+    private val CPIN_CMD = java.net.URLEncoder.encode("AT+CPIN?", "UTF-8")
+    private val CFUN_CMD = java.net.URLEncoder.encode("AT+CFUN?", "UTF-8")
+    private val CPAS_CMD = java.net.URLEncoder.encode("AT+CPAS", "UTF-8")
+    private val CGATT_CMD = java.net.URLEncoder.encode("AT+CGATT?", "UTF-8")
+
     suspend fun getWifiData(context: Context, quickStart: Boolean = false): WifiEntity? = withContext(Dispatchers.IO) {
         try {
             lastError = ""
@@ -382,7 +398,14 @@ object WifiCrawl {
 
         return if (resp.isSuccessful && resp.body.isNotEmpty()) {
             DebugLogger.logApi(TAG, "API Success [$path], code=${resp.code}, resp=${resp.body}")
-            JSONObject(resp.body)
+            try {
+                JSONObject(resp.body)
+            } catch (e: org.json.JSONException) {
+                // 单个端点 JSON 解析失败不应影响其他并发请求
+                lastError = "JSON parse error on $purePath: ${e.message}"
+                DebugLogger.logApiErr(TAG, "fetchApi JSON parse failed: ${e.message}")
+                null
+            }
         } else {
             lastError = "HTTP ${resp.code} on $purePath"
             DebugLogger.logApiErr(TAG, "API Error [$path], code=${resp.code}, resp=${resp.body}")
@@ -567,6 +590,8 @@ object WifiCrawl {
                 memStr = String.format(Locale.getDefault(), "%.1f%%", memUsage),
                 batteryPercent = if (batteryPercent >= 0) batteryPercent else -1
             )
+        } catch (e: CancellationException) {
+            throw e  // 协程取消必须传播，不能被吞掉
         } catch (e: Exception) {
             lastError = "Notification fetch: ${e.message}"
             DebugLogger.logApiErr(TAG, "fetchNotificationBaseInfo: ${e.message}")
@@ -629,6 +654,8 @@ object WifiCrawl {
             val resp = executeRequest(req) ?: return false
             if (!resp.isSuccessful) return false
             resp.body.trimStart().startsWith("{")  // 合法 JSON 对象
+        } catch (e: CancellationException) {
+            throw e  // 协程取消必须传播
         } catch (e: Exception) {
             false
         }
@@ -670,22 +697,22 @@ object WifiCrawl {
 
             val isSpreadtrum = platform == "spreadtrum"
 
-            // ── 命令编码 ──
-            val copsCmd = java.net.URLEncoder.encode("AT+COPS?", "UTF-8")
-            val cesqCmd = java.net.URLEncoder.encode("AT+CESQ", "UTF-8")
-            val cgsnCmd = java.net.URLEncoder.encode("AT+CGSN", "UTF-8")
-            val cgeqosCmd = java.net.URLEncoder.encode("AT+CGEQOSRDP=1", "UTF-8")
-            val qengCmd = java.net.URLEncoder.encode("AT+QENG=\"servingcell\"", "UTF-8")
-            val c5gregCmd = java.net.URLEncoder.encode("AT+C5GREG?", "UTF-8")
+            // ── 使用预编码常量（避免每次调用重复 URLEncoder.encode） ──
+            val copsCmd = COPS_CMD
+            val cesqCmd = CESQ_CMD
+            val cgsnCmd = CGSN_CMD
+            val cgeqosCmd = CGEQOS_CMD
+            val qengCmd = QENG_CMD
+            val c5gregCmd = C5GREG_CMD
             // 新增 AT 命令
-            val cgmmCmd = java.net.URLEncoder.encode("AT+CGMM", "UTF-8")
-            val cgmrCmd = java.net.URLEncoder.encode("AT+CGMR", "UTF-8")
-            val cregCmd = java.net.URLEncoder.encode("AT+CREG?", "UTF-8")
-            val cgcontrdpCmd = java.net.URLEncoder.encode("AT+CGCONTRDP=1", "UTF-8")
-            val cpinCmd = java.net.URLEncoder.encode("AT+CPIN?", "UTF-8")
-            val cfunCmd = java.net.URLEncoder.encode("AT+CFUN?", "UTF-8")
-            val cpasCmd = java.net.URLEncoder.encode("AT+CPAS", "UTF-8")
-            val cgattCmd = java.net.URLEncoder.encode("AT+CGATT?", "UTF-8")
+            val cgmmCmd = CGMM_CMD
+            val cgmrCmd = CGMR_CMD
+            val cregCmd = CREG_CMD
+            val cgcontrdpCmd = CGCONTRDP_CMD
+            val cpinCmd = CPIN_CMD
+            val cfunCmd = CFUN_CMD
+            val cpasCmd = CPAS_CMD
+            val cgattCmd = CGATT_CMD
 
             // ── 辅助函数 ──
             suspend fun atQuery(cmd: String): String {

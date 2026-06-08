@@ -24,7 +24,6 @@ import com.ufi_toolswidget.util.SPUtil
 import com.ufi_toolswidget.util.ThemeColors
 import com.ufi_toolswidget.util.WidgetBitmapCache
 import com.ufi_toolswidget.worker.WifiWorker
-import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -41,6 +40,8 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
         /** 上次渲染的数据指纹，数据未变时跳过整次渲染（performRender + applyWidgetTheme） */
         @Volatile private var lastDataHash: Int = 0
+        /** 标记数据哈希是否已被首次计算过，避免 hash=0 被误判为"未缓存" */
+        @Volatile private var hasCachedHash: Boolean = false
 
         /**
          * 获取或创建背景 Bitmap（委托 WidgetBitmapCache，分离纯色/自定义图缓存）。
@@ -63,11 +64,27 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
                 .edit().putString("error_log", "").apply()
         }
 
+        /** 将各种温度格式统一为 "XX°C"：处理 "℃"、裸 "C" 后缀，避免重复替换导致 "°°C" */
+        private fun normalizeTempString(temp: String): String {
+            // 1. 先统一 "℃" → "°C"
+            var s = temp.replace("℃", "°C")
+            // 2. 如果已经是 "°C" 结尾则直接返回，避免二次替换
+            if (s.endsWith("°C")) return s
+            // 3. 处理裸 "C" 结尾（如 "35C" → "35°C"）
+            if (s.endsWith("C") && !s.endsWith("°C")) {
+                s = s.removeSuffix("C") + "°C"
+            }
+            return s
+        }
+
+        /** 缓存 SimpleDateFormat 避免每次日志追加都重新创建 */
+        private val logTimeFormat = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+
         fun appendLog(context: Context, msg: String) {
             try {
                 val sp = context.getSharedPreferences("widget_debug", Context.MODE_PRIVATE)
                 val old = sp.getString("error_log", "") ?: ""
-                val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                val timestamp = synchronized(logTimeFormat) { logTimeFormat.format(Date()) }
                 val newLog = "[$timestamp] $msg\n$old"
                 sp.edit().putString("error_log", newLog.lines().take(50).joinToString("\n")).apply()
                 Log.d(TAG, msg)
@@ -76,29 +93,48 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             }
         }
 
-        fun renderAllWidgets(context: Context, force: Boolean = false) {
-            val now = System.currentTimeMillis()
-            if (now - lastRenderTime < RENDER_DEDUP_MS && !force) {
-                return // 短时间内已渲染过（Worker 和 MainActivity 双重触发去重）
-            }
+        /** 渲染去重锁，防止 TOCTOU 竞态（Worker 和 MainActivity 同时触发） */
+        private val renderLock = Any()
 
-            val currentHash = computeDataHash(context)
-            // ════ 通知提醒检测（在小组件刷新周期中触发，确保后台被杀时仍能检测） ════
-            val sp = context.getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
-            NotificationHelper.checkAndNotify(
-                context = context,
-                dailyFlowStr = sp.getString("daily_flow", "") ?: "",
-                monthlyFlowStr = sp.getString("flow", "") ?: "",
-                tempStr = sp.getString("temp", "") ?: "",
-                cpuStr = sp.getString("cpu", "") ?: "",
-                memStr = sp.getString("mem", "") ?: "",
-                batteryPercent = sp.getInt("battery_percent", 0),
-                isDeviceOnline = !WifiWorker.isWorkerStopped(context)
-            )
-            if (!force && currentHash != 0 && currentHash == lastDataHash) {
-                return // SP 数据未变，跳过整次渲染（performRender + applyWidgetTheme）
-            }
+        fun renderAllWidgets(context: Context, force: Boolean = false) {
+            synchronized(renderLock) {
+                val now = System.currentTimeMillis()
+                if (now - lastRenderTime < RENDER_DEDUP_MS && !force) {
+                    return // 短时间内已渲染过（Worker 和 MainActivity 双重触发去重）
+                }
+
+                val currentHash = computeDataHash(context)
+                if (!force && hasCachedHash && currentHash == lastDataHash) {
+                    // SP 数据未变，跳过整次渲染（performRender + applyWidgetTheme）
+                    // 但通知检测仍需执行（数据未变不代表通知已发送）
+                    val sp = context.getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
+                    NotificationHelper.checkAndNotify(
+                        context = context,
+                        dailyFlowStr = sp.getString("daily_flow", "") ?: "",
+                        monthlyFlowStr = sp.getString("flow", "") ?: "",
+                        tempStr = sp.getString("temp", "") ?: "",
+                        cpuStr = sp.getString("cpu", "") ?: "",
+                        memStr = sp.getString("mem", "") ?: "",
+                        batteryPercent = sp.getInt("battery_percent", 0),
+                        isDeviceOnline = !WifiWorker.isWorkerStopped(context)
+                    )
+                    return
+                }
+
+                // ════ 通知提醒检测（在小组件刷新周期中触发，确保后台被杀时仍能检测） ════
+                val sp = context.getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
+                NotificationHelper.checkAndNotify(
+                    context = context,
+                    dailyFlowStr = sp.getString("daily_flow", "") ?: "",
+                    monthlyFlowStr = sp.getString("flow", "") ?: "",
+                    tempStr = sp.getString("temp", "") ?: "",
+                    cpuStr = sp.getString("cpu", "") ?: "",
+                    memStr = sp.getString("mem", "") ?: "",
+                    batteryPercent = sp.getInt("battery_percent", 0),
+                    isDeviceOnline = !WifiWorker.isWorkerStopped(context)
+                )
             lastDataHash = currentHash
+            hasCachedHash = true
             lastRenderTime = now
 
             val appWidgetManager = AppWidgetManager.getInstance(context)
@@ -143,6 +179,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             //     setupClick(context, rv4x4, WifiWidget4x4::class.java)
             //     appWidgetManager.updateAppWidget(ids4x4, rv4x4)
             // }
+            } // end synchronized(renderLock)
         }
 
         /**
@@ -154,7 +191,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
         private fun computeDataHash(context: Context): Int {
             val sp = context.getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
             var h = SPUtil.getCachedDataHash(context)
-            if (h == 0) return 0 // 数据尚未缓存，触发全量渲染
+            if (h == 0 && !hasCachedHash) return 0 // 数据尚未缓存（首次启动），触发全量渲染
             // 显隐设置
             h = 31 * h + sp.getBoolean("show_flow", true).hashCode()
             h = 31 * h + sp.getBoolean("show_signal", true).hashCode()
@@ -293,7 +330,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             safeSetText(rv, R.id.tv_flow, flow.replace("GB", "").trim())
 
             // ===== 第三行：温度 + CPU + RAM + 信号质量 =====
-            val tempClean = temp.replace("℃", "°C").replace("C", "°C")
+            val tempClean = normalizeTempString(temp)
             safeSetText(rv, R.id.tv_temp, tempClean)
 
             val cpuClean = cpu.replace("%", "").trim()
@@ -325,13 +362,8 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             }
             safeSetText(rv, R.id.tv_signal_dbm, signal)
 
-            // ===== 路由器图标：离线时切换为 ic_router_off =====
-            val routerRes = if (com.ufi_toolswidget.worker.WifiWorker.isWorkerStopped(context)) {
-                R.drawable.ic_router_off
-            } else {
-                R.drawable.ic_router
-            }
-            safeSetImageResource(rv, R.id.iv_router, routerRes)
+            // ===== 路由器图标：此处 stopped 已在上层 early return，始终为 ic_router =====
+            safeSetImageResource(rv, R.id.iv_router, R.drawable.ic_router)
 
             // ===== 第四行：时间戳 =====
             safeSetText(rv, R.id.tv_update_time, updateTime)
@@ -387,7 +419,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
         }
 
         /** 4x1 条形布局数据渲染 */
-        private fun performRender4x1(context: Context, rv: RemoteViews) {
+        internal fun performRender4x1(context: Context, rv: RemoteViews) {
             val sp = context.getSharedPreferences("wifi_data", Context.MODE_PRIVATE)
             val stopped = com.ufi_toolswidget.worker.WifiWorker.isWorkerStopped(context)
 
@@ -465,7 +497,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             safeSetText(rv, R.id.tv_charging, if (isCharging) "⚡" else "")
 
             // 温度
-            val tempClean = temp.replace("℃", "°C").replace("C", "°C")
+            val tempClean = normalizeTempString(temp)
             safeSetText(rv, R.id.tv_temp, tempClean)
 
             // 路由器图标
@@ -503,7 +535,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
         }
 
         /** 4x1 条形布局主题着色 */
-        private fun applyWidgetTheme4x1(context: Context, rv: RemoteViews) {
+        internal fun applyWidgetTheme4x1(context: Context, rv: RemoteViews) {
             val isDark = SPUtil.isWidgetDark(context)
 
             val themeId = if (SPUtil.getWidgetFollowAppTheme(context)) {
@@ -1139,7 +1171,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             safeSetText(rv, R.id.tv_flow, flow.replace("GB", "").trim())
 
             // ===== Row 4: 温度 + CPU + RAM =====
-            val tempClean = temp.replace("℃", "°C").replace("C", "°C")
+            val tempClean = normalizeTempString(temp)
             safeSetText(rv, R.id.tv_temp, tempClean)
 
             val cpuClean = cpu.replace("%", "").trim()
@@ -1151,9 +1183,8 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             // ===== Row 5: 信号 dBm =====
             safeSetText(rv, R.id.tv_signal_dbm, signal)
 
-            // ===== 路由器图标：离线时切换为 ic_router_off =====
-            val routerRes = if (stopped) R.drawable.ic_router_off else R.drawable.ic_router
-            safeSetImageResource(rv, R.id.iv_router, routerRes)
+            // ===== 路由器图标：此处 stopped 已在上层 early return，始终为 ic_router =====
+            safeSetImageResource(rv, R.id.iv_router, R.drawable.ic_router)
 
             // ===== Row 6: 时间戳 =====
             safeSetText(rv, R.id.tv_update_time, updateTime)
@@ -1316,8 +1347,8 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
                     ExistingPeriodicWorkPolicy.KEEP,
                     workRequest
                 )
-            } catch (_: Exception) {
-                Log.w(TAG, "ensurePeriodicWorker failed")
+            } catch (e: Exception) {
+                Log.w(TAG, "ensurePeriodicWorker failed: ${e.message}", e)
             }
         }
 
@@ -1430,7 +1461,33 @@ class WifiWidget2x1 : BaseWifiWidget(R.layout.widget_2x1) {
     }
 }
 
-class WifiWidget4x1 : BaseWifiWidget(R.layout.widget_4x1)
+class WifiWidget4x1 : BaseWifiWidget(R.layout.widget_4x1) {
+    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        for (id in ids) {
+            val rv = RemoteViews(context.packageName, layoutId)
+            performRender4x1(context, rv)
+            applyWidgetTheme4x1(context, rv)
+            setupClick(context, rv, this::class.java)
+            manager.updateAppWidget(id, rv)
+        }
+        triggerWorker(context)
+    }
+
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        manager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle
+    ) {
+        super.onAppWidgetOptionsChanged(context, manager, appWidgetId, newOptions)
+        appendLog(context, "4×1 尺寸变化，重新渲染")
+        val rv = RemoteViews(context.packageName, layoutId)
+        performRender4x1(context, rv)
+        applyWidgetTheme4x1(context, rv)
+        setupClick(context, rv, this::class.java)
+        manager.updateAppWidget(appWidgetId, rv)
+    }
+}
 
 class WifiWidget4x4 : BaseWifiWidget(R.layout.widget_4x4) {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {

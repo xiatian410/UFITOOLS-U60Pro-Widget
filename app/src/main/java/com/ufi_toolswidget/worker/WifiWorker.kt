@@ -58,11 +58,11 @@ class WifiWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
          */
         private fun pingDevice(ip: String, port: Int): Boolean {
             return try {
-                val socket = Socket()
-                socket.connect(InetSocketAddress(ip, port), PING_TIMEOUT_MS)
-                socket.close()
-                Log.d(TAG, "Ping $ip:$port OK")
-                true
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(ip, port), PING_TIMEOUT_MS)
+                    Log.d(TAG, "Ping $ip:$port OK")
+                    true
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Ping $ip:$port FAILED: ${e.message}")
                 false

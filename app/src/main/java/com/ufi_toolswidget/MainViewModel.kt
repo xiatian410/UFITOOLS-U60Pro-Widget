@@ -10,6 +10,7 @@ import com.ufi_toolswidget.util.WifiCrawl
 import com.ufi_toolswidget.util.WifiEntity
 import com.ufi_toolswidget.worker.WifiWorker
 import com.ufi_toolswidget.widget.BaseWifiWidget
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -107,6 +108,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val isQuickStart = !hasCompletedFirstRefresh
             val data = try {
                 WifiCrawl.getWifiData(appCtx, quickStart = isQuickStart)
+            } catch (e: CancellationException) {
+                throw e  // 协程取消必须传播，不能当作普通错误处理
             } catch (e: Exception) {
                 DebugLogger.logExc(TAG, "refreshData: unexpected exception: ${e.message}")
                 null
@@ -126,7 +129,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         _activeDialogType.value = null
                     }
                     WifiWorker.resetFailureState(appCtx)
-                    SPUtil.saveData(appCtx, data)
+                    // SPUtil.saveData 涉及磁盘 I/O，在 IO 线程异步执行避免阻塞主线程
+                    kotlinx.coroutines.withContext(Dispatchers.IO) {
+                        SPUtil.saveData(appCtx, data)
+                    }
                     BaseWifiWidget.renderAllWidgets(appCtx)
                     onSuccess(data)
                 } else {
@@ -180,9 +186,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** 从 SharedPreferences 加载缓存数据到 StateFlow */
     private fun loadCachedData() {
-        val sp = SPUtil.getSp(getApplication())
-        val model = sp.getString("model", null) ?: return
-        _wifiEntity.value = reconstructFromSp(sp, model)
+        try {
+            val sp = SPUtil.getSp(getApplication())
+            val model = sp.getString("model", null) ?: return
+            _wifiEntity.value = reconstructFromSp(sp, model)
+        } catch (e: Exception) {
+            DebugLogger.logExc(TAG, "loadCachedData failed: ${e.message}")
+            // SP 数据损坏时静默降级，等待下次 API 刷新补全
+        }
     }
 
     /**

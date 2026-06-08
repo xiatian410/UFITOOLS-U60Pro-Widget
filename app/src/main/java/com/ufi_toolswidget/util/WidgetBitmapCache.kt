@@ -9,7 +9,6 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.net.Uri
 import android.util.Log
-import java.io.InputStream
 
 /**
  * 小组件背景 Bitmap 缓存，减少重复分配（~2.5MB/次）带来的 GC 压力。
@@ -107,28 +106,28 @@ object WidgetBitmapCache {
         return try {
             val uri = Uri.parse(uriString)
 
-            // 1. 获取图片原始尺寸（仅解码尺寸）
-            val inputStream: InputStream = context.contentResolver.openInputStream(uri) ?: return null
+            // 1. 获取图片原始尺寸（仅解码尺寸），使用 use{} 确保流关闭
             val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            android.graphics.BitmapFactory.decodeStream(inputStream, null, options)
-            inputStream.close()
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                android.graphics.BitmapFactory.decodeStream(stream, null, options)
+            } ?: return null
 
-            // 2. 计算缩放比例
+            // 2. 计算缩放比例（必须是 2 的幂，Android 文档要求）
             var inSampleSize = 1
             if (options.outWidth > TARGET_W || options.outHeight > TARGET_H) {
                 val ratioW = (options.outWidth + TARGET_W - 1) / TARGET_W
                 val ratioH = (options.outHeight + TARGET_H - 1) / TARGET_H
-                inSampleSize = maxOf(ratioW, ratioH, 1)
+                inSampleSize = Integer.highestOneBit(maxOf(ratioW, ratioH, 1))
             }
 
-            // 3. 按比例加载
-            val finalStream: InputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val rawBitmap = android.graphics.BitmapFactory.decodeStream(finalStream, null,
-                android.graphics.BitmapFactory.Options().apply { this.inSampleSize = inSampleSize })
-            finalStream.close()
+            // 3. 按比例加载，使用 use{} 确保流关闭
+            val rawBitmap = context.contentResolver.openInputStream(uri)?.use { finalStream ->
+                android.graphics.BitmapFactory.decodeStream(finalStream, null,
+                    android.graphics.BitmapFactory.Options().apply { this.inSampleSize = inSampleSize })
+            } ?: return null
 
             // 4. 应用圆角
-            val rounded = if (cornerRadiusDp > 0f && rawBitmap != null) {
+            val rounded = if (cornerRadiusDp > 0f) {
                 applyRoundedCorners(context, rawBitmap, cornerRadiusDp)
             } else rawBitmap
 
@@ -152,11 +151,11 @@ object WidgetBitmapCache {
      * 给 Bitmap 添加圆角，crop 到圆角矩形区域。
      * radiusDp <= 0 时直接返回原始 Bitmap。
      */
-    private fun applyRoundedCorners(context: Context, source: Bitmap, radiusDp: Float): Bitmap {
+    private fun applyRoundedCorners(context: Context, source: Bitmap, radiusDp: Float): Bitmap? {
         if (radiusDp <= 0f) return source
         if (source.isRecycled) {
             Log.w(TAG, "applyRoundedCorners: source bitmap is already recycled")
-            return source
+            return null  // 返回 null 而非已回收的 bitmap，避免下游使用时崩溃
         }
         val w = source.width
         val h = source.height

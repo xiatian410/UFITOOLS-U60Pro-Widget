@@ -21,28 +21,49 @@ object NetUtil {
             .callTimeout(20, TimeUnit.SECONDS)
             .cookieJar(object : CookieJar {
                 override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-                    cookieStore[url.host] = cookies
+                    // 合并而非替换：保留同 host 下其他请求设置的 cookie
+                    val existing = cookieStore[url.host].orEmpty().toMutableList()
+                    for (newCookie in cookies) {
+                        existing.removeAll { it.name == newCookie.name }
+                        existing.add(newCookie)
+                    }
+                    cookieStore[url.host] = existing
                 }
                 override fun loadForRequest(url: HttpUrl): List<Cookie> {
-                    return cookieStore[url.host] ?: emptyList()
+                    // 过滤已过期和不匹配的 cookie
+                    val now = System.currentTimeMillis()
+                    return cookieStore[url.host]?.filter {
+                        it.matches(url) && it.expiresAt > now
+                    } ?: emptyList()
                 }
             }).build()
+    }
+
+    /** 清除所有缓存的 cookie（登出/切换设备时调用） */
+    fun clearCookies() {
+        cookieStore.clear()
     }
 
     fun saveCookies(host: String, cookies: List<Cookie>) {
         cookieStore[host] = cookies
     }
 
+    // 缓存 MessageDigest / Mac 实例，避免每次调用都执行 JCA Provider 查找
+    private val sha256Digest = ThreadLocal.withInitial { MessageDigest.getInstance("SHA-256") }
+    private val hmacMd5Mac = ThreadLocal.withInitial { Mac.getInstance("HmacMD5") }
+
     // SHA256 字符串哈希 (返回十六进制字符串，用于 Authorization 等)
     fun sha256(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hash = digest.digest(input.toByteArray())
+        val digest = sha256Digest.get()!!
+        digest.reset()
+        val hash = digest.digest(input.toByteArray(Charsets.UTF_8))
         return hash.joinToString("") { "%02x".format(it) }
     }
 
     // SHA256 字节哈希 (返回原始字节数组)
     private fun sha256Bytes(input: ByteArray): ByteArray {
-        val digest = MessageDigest.getInstance("SHA-256")
+        val digest = sha256Digest.get()!!
+        digest.reset()
         return digest.digest(input)
     }
 
@@ -53,10 +74,10 @@ object NetUtil {
 
     // HMAC-MD5 运算
     private fun hmacMd5(data: String, key: String): ByteArray {
-        val secretKey = SecretKeySpec(key.toByteArray(), "HmacMD5")
-        val mac = Mac.getInstance("HmacMD5")
+        val mac = hmacMd5Mac.get()!!
+        val secretKey = SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacMD5")
         mac.init(secretKey)
-        return mac.doFinal(data.toByteArray())
+        return mac.doFinal(data.toByteArray(Charsets.UTF_8))
     }
 
     /**
