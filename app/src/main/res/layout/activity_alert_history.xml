@@ -51,36 +51,17 @@
             app:icon="@drawable/ic_arrow_back"
             app:iconTint="@color/text_main" />
 
-        <!-- 右上：筛选 + 设置 -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+        <!-- 右上：设置 -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_settings"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
             android:layout_gravity="end|top"
             android:layout_marginTop="6dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_filter_toggle"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:text="筛选"
-                android:textSize="12sp"
-                android:visibility="gone"
-                app:cornerRadius="8dp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_settings"
-                style="@style/Widget.Material3.Button.IconButton"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                app:icon="@drawable/ic_settings"
-                app:iconSize="18dp"
-                app:iconTint="@color/text_main" />
-        </LinearLayout>
+            app:icon="@drawable/ic_settings"
+            app:iconSize="18dp"
+            app:iconTint="@color/text_main" />
     </FrameLayout>
 
     <!-- Action buttons -->
@@ -132,6 +113,26 @@
             app:iconGravity="textStart"
             app:iconPadding="6dp" />
     </LinearLayout>
+
+    <!-- Filter button (below action bar) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_filter_toggle"
+        style="@style/Widget.Material3.Button.TonalButton"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:layout_gravity="start"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginBottom="4dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:text="筛选"
+        android:textSize="12sp"
+        android:visibility="gone"
+        app:cornerRadius="10dp"
+        app:icon="@drawable/ic_filter"
+        app:iconSize="14dp"
+        app:iconGravity="textStart"
+        app:iconPadding="4dp" />
 
     <!-- RecyclerView -->
     <androidx.recyclerview.widget.RecyclerView

@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
-import androidx.paging.cachedIn
 import com.ufi_toolswidget.db.AlertRecord
 import com.ufi_toolswidget.util.AlertHistoryManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -38,6 +37,7 @@ class AlertHistoryViewModel(application: Application) : AndroidViewModel(applica
                 Pager(
                     config = PagingConfig(
                         pageSize = ps,
+                        initialLoadSize = ps,
                         enablePlaceholders = false,
                         prefetchDistance = ps / 2
                     ),
@@ -55,5 +55,4 @@ class AlertHistoryViewModel(application: Application) : AndroidViewModel(applica
                     }
                 ).flow
             }
-            .cachedIn(viewModelScope)
 }

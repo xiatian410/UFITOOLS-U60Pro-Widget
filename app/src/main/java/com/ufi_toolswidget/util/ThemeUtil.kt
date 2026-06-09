@@ -512,6 +512,8 @@ object ThemeUtil {
                 applyTextColorsToContainer(child, textPrimary, textSecondary, accent, iconTint, cardBg)
             }
             if (child is TextView) {
+                // 跳过警报历史操作按钮（强制白字，不被主题覆盖）
+                if (child.id == R.id.btn_mark_all_read || child.id == R.id.btn_clear_all || child.id == R.id.btn_filter_toggle) continue
                 // 统一阈值逻辑：标题(>20sp) → 主色，正文(14-20sp) → 主色，注释(≤13.5sp) → 副色
                 when {
                     child.textSize > 20f * density -> child.setTextColor(textPrimary)

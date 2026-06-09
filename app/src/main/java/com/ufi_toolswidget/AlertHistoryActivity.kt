@@ -18,6 +18,7 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewGroup
+import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -144,24 +145,20 @@ class AlertHistoryActivity : AppCompatActivity() {
     // ═══════════════════════════════════════════
 
     private fun setupFilterToggle() {
-        val textSecondary = ThemeColors.textSecondary(this)
-        btnFilterToggle.setTextColor(textSecondary)
+        val accent = ThemeColors.accent(this)
+        val textPrimary = ThemeColors.textPrimary(this)
+        btnFilterToggle.backgroundTintList = ColorStateList.valueOf(accent)
+        btnFilterToggle.setTextColor(Color.WHITE)
+        btnFilterToggle.iconTint = ColorStateList.valueOf(Color.WHITE)
+        btnFilterToggle.strokeWidth = 0
         updateFilterToggleLabel()
-        btnFilterToggle.setOnClickListener { showFilterDialog() }
+        AnimationUtil.applyScaleClickAnimation(btnFilterToggle) { showFilterDialog() }
     }
 
     private fun updateFilterToggleLabel() {
         val f = viewModel.filter.value
         val n = (if (f.type != "all") 1 else 0) + (if (f.readStatus != "all") 1 else 0)
-        val accent = ThemeColors.accent(this)
-        val textSec = ThemeColors.textSecondary(this)
-        if (n > 0) {
-            btnFilterToggle.text = "筛选($n)"
-            btnFilterToggle.setTextColor(accent)
-        } else {
-            btnFilterToggle.text = "筛选"
-            btnFilterToggle.setTextColor(textSec)
-        }
+        btnFilterToggle.text = if (n > 0) "筛选($n)" else "筛选"
     }
 
     private fun showFilterDialog() {
@@ -176,21 +173,31 @@ class AlertHistoryActivity : AppCompatActivity() {
             context = ctx, title = "筛选警报", iconRes = R.drawable.ic_notification,
             onFill = { content ->
                 content.addView(sectionLabel("类型"))
-                val typeRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = fillWidth().apply { bottomMargin = dp(10) } }
+                // 类型 — 双栏网格
+                val typeGrid = GridLayout(ctx).apply {
+                    columnCount = 2
+                    layoutParams = fillWidth().apply { bottomMargin = dp(10) }
+                }
                 val tBtns = mutableListOf<MaterialButton>()
                 for (opt in typeFilters) {
-                    val b = chip(opt.label, opt.id == curType, accent, textPrimary, cardBg)
-                    b.setOnClickListener { curType = opt.id; tBtns.forEachIndexed { i, btn -> styleChip(btn, typeFilters[i].id == curType, accent, textPrimary, cardBg) } }
-                    tBtns.add(b); typeRow.addView(b)
+                    val b = gridChip(opt.label, opt.id == curType, accent, textPrimary, cardBg)
+                    b.setOnClickListener {
+                        curType = opt.id
+                        tBtns.forEachIndexed { i, btn -> styleChip(btn, typeFilters[i].id == curType, accent, textPrimary, cardBg) }
+                    }
+                    tBtns.add(b); typeGrid.addView(b)
                 }
-                content.addView(typeRow)
+                content.addView(typeGrid)
 
                 content.addView(sectionLabel("状态"))
                 val readRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = fillWidth() }
                 val rBtns = mutableListOf<MaterialButton>()
                 for (opt in readFilters) {
                     val b = chip(opt.label, opt.id == curRead, accent, textPrimary, cardBg)
-                    b.setOnClickListener { curRead = opt.id; rBtns.forEachIndexed { i, btn -> styleChip(btn, readFilters[i].id == curRead, accent, textPrimary, cardBg) } }
+                    b.setOnClickListener {
+                        curRead = opt.id
+                        rBtns.forEachIndexed { i, btn -> styleChip(btn, readFilters[i].id == curRead, accent, textPrimary, cardBg) }
+                    }
                     rBtns.add(b); readRow.addView(b)
                 }
                 content.addView(readRow)
@@ -253,7 +260,7 @@ class AlertHistoryActivity : AppCompatActivity() {
             onPrimaryClick = { d ->
                 AlertHistoryManager.saveSettings(ctx, curPageSize, curMaxCount)
                 viewModel.pageSize.value = curPageSize
-                adapter.refresh()
+                adapter.refresh()  // 触发当前 PagingSource 刷新；若 pageSize 变了，flatMapLatest 会创建新 Pager
                 d.dismiss()
             },
             secondaryBtnText = "取消",
@@ -276,6 +283,20 @@ class AlertHistoryActivity : AppCompatActivity() {
             this.text = text; textSize = 12f; insetTop = 0; insetBottom = 0
             setPadding(dp(12), 0, dp(12), 0)
             layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply { marginEnd = dp(4) }
+        }
+    }
+
+    @SuppressLint("PrivateResource")
+    private fun gridChip(text: String, sel: Boolean, accent: Int, textPri: Int, cardBg: Int): MaterialButton {
+        return MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
+            styleChip(this, sel, accent, textPri, cardBg)
+            this.text = text; textSize = 12f; insetTop = 0; insetBottom = 0
+            setPadding(dp(8), 0, dp(8), 0)
+            layoutParams = GridLayout.LayoutParams().apply {
+                width = 0; height = dp(36)
+                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                setMargins(dp(3), dp(3), dp(3), dp(3))
+            }
         }
     }
 
@@ -398,10 +419,12 @@ class AlertHistoryActivity : AppCompatActivity() {
 
     private fun showAlertActionDialog(record: AlertRecord) {
         val ctx = this; val timeStr = fullTimeFormat.format(Date(record.timestamp))
+        // 去除消息中已嵌入的"触发时间"行（无日期），由下方统一显示带日期的完整时间
+        val cleanMsg = record.message.replace(Regex("\\n?触发时间:\\s*\\S+"), "").trimEnd()
         CommonDialogHelper.showCommonDialog(
             context = ctx, title = record.title, iconRes = typeToIconRes(record.type),
             onFill = { c ->
-                c.addView(TextView(ctx).apply { text = record.message; textSize = 13f; setTextColor(ThemeColors.textPrimary(ctx)); setLineSpacing(0f, 1.3f) })
+                c.addView(TextView(ctx).apply { text = cleanMsg; textSize = 13f; setTextColor(ThemeColors.textPrimary(ctx)); setLineSpacing(0f, 1.3f) })
                 c.addView(TextView(ctx).apply { text = "触发时间: $timeStr"; textSize = 12f; setTextColor(ThemeColors.textSecondary(ctx)); layoutParams = fillWidth().apply { topMargin = dp(8) } })
                 if (!record.isRead) {
                     c.addView(CommonSettingsItemHelper.createDivider(ctx).apply { layoutParams = fillWidth().apply { topMargin = dp(6); bottomMargin = dp(6) } })
