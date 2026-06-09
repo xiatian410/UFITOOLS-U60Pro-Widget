@@ -146,6 +146,49 @@
                     android:textSize="13sp" />
             </LinearLayout>
 
+            <!-- 左上角：警报历史按钮 -->
+            <LinearLayout
+                android:id="@+id/btn_alert_history"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_gravity="start|top"
+                android:layout_marginTop="12dp"
+                android:layout_marginStart="12dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackground"
+                android:paddingHorizontal="8dp">
+                <FrameLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content">
+                    <ImageView
+                        android:id="@+id/btn_alert_icon"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/ic_notification"
+                        android:duplicateParentState="true" />
+                    <View
+                        android:id="@+id/alert_unread_dot"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
+                        android:layout_gravity="top|end"
+                        android:layout_marginTop="-2dp"
+                        android:layout_marginEnd="-2dp"
+                        android:visibility="gone" />
+                </FrameLayout>
+                <TextView
+                    android:id="@+id/btn_alert_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="警报"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_main"
+                    android:duplicateParentState="true" />
+            </LinearLayout>
+
             <LinearLayout
                 android:id="@+id/btn_settings"
                 android:layout_width="wrap_content"

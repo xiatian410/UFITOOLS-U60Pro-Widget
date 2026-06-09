@@ -33,17 +33,19 @@ object NotificationHelper {
     private const val CHANNEL_ID = "device_alerts"
     private const val CHANNEL_NAME = "设备提醒"
 
-    // 各类型通知唯一 ID（用于区分通知栏条目）
-    private const val NOTIFY_ID_DAILY_FLOW      = 2001
-    private const val NOTIFY_ID_MONTHLY_FLOW    = 2002
-    private const val NOTIFY_ID_TEMP            = 2003
-    private const val NOTIFY_ID_CPU             = 2004
-    private const val NOTIFY_ID_DEVICE_ONLINE   = 2005
-    private const val NOTIFY_ID_BATTERY         = 2006
-    private const val NOTIFY_ID_MEMORY          = 2007
-    private const val NOTIFY_ID_GROUP           = 1001  // 聚合摘要
+    // 通知类型标识（用于警报历史分类）
+    private const val TYPE_DAILY_FLOW      = "daily_flow"
+    private const val TYPE_MONTHLY_FLOW    = "monthly_flow"
+    private const val TYPE_TEMP            = "temp"
+    private const val TYPE_CPU             = "cpu"
+    private const val TYPE_DEVICE_ONLINE   = "device_online"
+    private const val TYPE_BATTERY         = "battery"
+    private const val TYPE_MEMORY          = "memory"
 
-    /** 同类通知防抖间隔：动态读取用户设置的监控间隔，最小 15 秒 */
+    // 通知 ID 自增计数器起始值
+    private const val NOTIFY_ID_BASE = 10000
+
+    /** 防抖间隔：动态读取用户设置的监控间隔，最小 15 秒 */
     private fun getDebounceMs(context: Context): Long {
         return SPUtil.getMonitorIntervalSec(context).coerceIn(15, 600) * 1000L
     }
@@ -100,15 +102,32 @@ object NotificationHelper {
     // ─── 通知发送 ───
 
     /**
-     * 发送一条通知。
+     * 获取下一个通知 ID（自增，持久化）。
+     * 每次通知使用唯一 ID，避免覆盖之前的通知。
      */
-    private fun showNotification(context: Context, notifyId: Int, title: String, message: String) {
+    private fun nextNotifyId(context: Context): Int {
+        val sp = SPUtil.getSp(context)
+        val current = sp.getInt("notify_id_counter", NOTIFY_ID_BASE)
+        val next = if (current > NOTIFY_ID_BASE + 5000) NOTIFY_ID_BASE else current + 1
+        sp.edit().putInt("notify_id_counter", next).apply()
+        return next
+    }
+
+    /**
+     * 发送一条通知并记录到警报历史。
+     * 每次调用生成唯一通知 ID，不会顶掉之前的通知。
+     */
+    private fun showNotification(context: Context, type: String, title: String, message: String) {
         if (!hasPermission(context)) {
-            DebugLogger.logApi(TAG, "showNotification: no permission, skipping notifyId=$notifyId title=$title")
+            DebugLogger.logApi(TAG, "showNotification: no permission, skipping type=$type title=$title")
+            // 无通知权限时仍然记录到警报历史
+            AlertHistoryManager.addAlert(context, type, title, message)
             return
         }
 
-        DebugLogger.logApi(TAG, "showNotification: notifyId=$notifyId title=$title msg=$message")
+        val notifyId = nextNotifyId(context)
+        DebugLogger.logApi(TAG, "showNotification: id=$notifyId type=$type title=$title msg=$message")
+
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -128,6 +147,9 @@ object NotificationHelper {
             .build()
 
         NotificationManagerCompat.from(context).notify(notifyId, notification)
+
+        // 写入警报历史
+        AlertHistoryManager.addAlert(context, type, title, message)
     }
 
     // ─── 主检查入口 ───
@@ -196,7 +218,7 @@ object NotificationHelper {
         if (bytes >= threshold) {
             val title = "今日流量提醒"
             val msg = "今日已使用 ${formatBytes(bytes)}，超过阈值 ${formatBytes(threshold)}\n触发时间: ${currentTime()}"
-            showNotification(context, NOTIFY_ID_DAILY_FLOW, title, msg)
+            showNotification(context, TYPE_DAILY_FLOW, title, msg)
             updateLastNotifyTime(context, "last_notify_daily_flow")
             activity?.let {
                 ToastUtil.showWarningConfirmDialog(
@@ -228,7 +250,7 @@ object NotificationHelper {
         if (bytes >= threshold) {
             val title = "本月流量提醒"
             val msg = "本月已使用 ${formatBytes(bytes)}，超过阈值 ${formatBytes(threshold)}\n触发时间: ${currentTime()}"
-            showNotification(context, NOTIFY_ID_MONTHLY_FLOW, title, msg)
+            showNotification(context, TYPE_MONTHLY_FLOW, title, msg)
             updateLastNotifyTime(context, "last_notify_monthly_flow")
             // 应用内警告确认弹窗
             activity?.let {
@@ -261,7 +283,7 @@ object NotificationHelper {
         if (temp >= threshold) {
             val title = "温度过高提醒"
             val msg = "当前设备温度 ${temp}℃，超过阈值 ${threshold}℃\n触发时间: ${currentTime()}"
-            showNotification(context, NOTIFY_ID_TEMP, title, msg)
+            showNotification(context, TYPE_TEMP, title, msg)
             updateLastNotifyTime(context, "last_notify_temp")
             // 应用内警告 Toast
             activity?.let {
@@ -288,7 +310,7 @@ object NotificationHelper {
         if (pct >= threshold) {
             val title = "CPU 异常占用提醒"
             val msg = "当前 CPU 占用 ${pct}%，超过阈值 ${threshold}%\n触发时间: ${currentTime()}"
-            showNotification(context, NOTIFY_ID_CPU, title, msg)
+            showNotification(context, TYPE_CPU, title, msg)
             updateLastNotifyTime(context, "last_notify_cpu")
             // 应用内警告 Toast
             activity?.let {
@@ -315,7 +337,7 @@ object NotificationHelper {
         if (pct >= threshold) {
             val title = "内存占用过高提醒"
             val msg = "当前内存占用 ${pct}%，超过阈值 ${threshold}%\n触发时间: ${currentTime()}"
-            showNotification(context, NOTIFY_ID_MEMORY, title, msg)
+            showNotification(context, TYPE_MEMORY, title, msg)
             updateLastNotifyTime(context, "last_notify_memory")
             // 应用内警告 Toast
             activity?.let {
@@ -343,7 +365,7 @@ object NotificationHelper {
         if (percent <= threshold) {
             val title = "电量过低提醒"
             val msg = "当前电量 ${percent}%，低于阈值 ${threshold}%\n触发时间: ${currentTime()}"
-            showNotification(context, NOTIFY_ID_BATTERY, title, msg)
+            showNotification(context, TYPE_BATTERY, title, msg)
             updateLastNotifyTime(context, "last_notify_battery")
             // 应用内警告 Toast
             activity?.let {
@@ -366,14 +388,14 @@ object NotificationHelper {
         if (isOnline) {
             val title = "设备已上线"
             val msg = "设备已恢复连接，当前在线\n触发时间: ${currentTime()}"
-            showNotification(context, NOTIFY_ID_DEVICE_ONLINE, title, msg)
+            showNotification(context, TYPE_DEVICE_ONLINE, title, msg)
             activity?.let {
                 ToastUtil.showDropToast(it, ToastStyle.INFO, title, msg)
             }
         } else {
             val title = "设备已离线"
             val msg = "设备连接已断开\n触发时间: ${currentTime()}"
-            showNotification(context, NOTIFY_ID_DEVICE_ONLINE, title, msg)
+            showNotification(context, TYPE_DEVICE_ONLINE, title, msg)
             activity?.let {
                 ToastUtil.showDropToast(it, ToastStyle.WARNING, title, msg)
             }

@@ -99,6 +99,7 @@ class MainActivity : AppCompatActivity() {
         DebugLogger.logLife(TAG, "onResume() called")
         ThemeUtil.applyTheme(this, ThemeUtil.PageType.MAIN)
         DebugLogger.logUi(TAG, "Theme applied in onResume")
+        updateAlertUnreadDot()
         if (::tvModel.isInitialized) {
             // 先检测 Worker 是否因连续失败被停止
             checkWorkerFailureState()
@@ -400,6 +401,14 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
             }
         }
+
+        // 左上角：警报历史入口
+        findViewById<View>(R.id.btn_alert_history).apply {
+            AnimationUtil.applyScaleClickAnimation(this) {
+                startActivity(Intent(this@MainActivity, AlertHistoryActivity::class.java))
+            }
+        }
+        updateAlertUnreadDot()
 
         // 检查更新按钮：使用 applyScaleClickAnimation 统一按压动画 + 点击回调
         // 修复旧代码 setOnTouchListener + setOnClickListener 冲突导致 onClick 不触发的 Bug
@@ -1016,6 +1025,25 @@ class MainActivity : AppCompatActivity() {
      *
      * 如果 Worker 已恢复，关闭弹窗。
      */
+    /** 更新左上角警报按钮的未读圆点 */
+    private fun updateAlertUnreadDot() {
+        try {
+            val unreadDot = findViewById<View>(R.id.alert_unread_dot) ?: return
+            val unreadCount = AlertHistoryManager.getUnreadCount(this)
+            if (unreadCount > 0) {
+                val accent = ThemeColors.accent(this)
+                val bg = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(accent)
+                }
+                unreadDot.background = bg
+                unreadDot.visibility = View.VISIBLE
+            } else {
+                unreadDot.visibility = View.GONE
+            }
+        } catch (_: Exception) { }
+    }
+
     private fun checkWorkerFailureState() {
         val stopped = WifiWorker.isWorkerStopped(this)
         DebugLogger.logSys(TAG, "checkWorkerFailureState: stopped=$stopped")
