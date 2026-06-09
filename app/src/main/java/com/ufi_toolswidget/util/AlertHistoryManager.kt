@@ -1,6 +1,7 @@
 package com.ufi_toolswidget.util
 
 import android.content.Context
+import android.content.Intent
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -48,6 +49,8 @@ object AlertHistoryManager {
     private const val SP_KEY = "alert_history_json"
     private const val MAX_RECORDS = 200
 
+    const val ACTION_DATA_CHANGED = "com.ufi_toolswidget.ALERT_HISTORY_CHANGED"
+
     private var cachedList: MutableList<AlertRecord>? = null
 
     /** 获取全部警报记录（最新在前） */
@@ -84,6 +87,7 @@ object AlertHistoryManager {
         cachedList = list
         saveToSp(ctx, list)
         DebugLogger.logApi(TAG, "Alert added: type=$type title=$title (total=${list.size})")
+        notifyChanged(ctx)
     }
 
     /** 标记单条为已读 */
@@ -95,6 +99,7 @@ object AlertHistoryManager {
             list[idx] = list[idx].copy(isRead = true)
             cachedList = list
             saveToSp(ctx, list)
+            notifyChanged(ctx)
         }
     }
 
@@ -112,6 +117,7 @@ object AlertHistoryManager {
         if (changed) {
             cachedList = list
             saveToSp(ctx, list)
+            notifyChanged(ctx)
         }
     }
 
@@ -123,6 +129,7 @@ object AlertHistoryManager {
         if (removed) {
             cachedList = list
             saveToSp(ctx, list)
+            notifyChanged(ctx)
         }
     }
 
@@ -131,6 +138,7 @@ object AlertHistoryManager {
     fun clearAll(ctx: Context) {
         cachedList = mutableListOf()
         saveToSp(ctx, cachedList!!)
+        notifyChanged(ctx)
     }
 
     /** 清除缓存，下次读取重新加载 */
@@ -140,6 +148,10 @@ object AlertHistoryManager {
     }
 
     // ── 内部存储 ──
+
+    private fun notifyChanged(ctx: Context) {
+        ctx.sendBroadcast(Intent(ACTION_DATA_CHANGED))
+    }
 
     private fun loadFromSp(ctx: Context): MutableList<AlertRecord> {
         return try {
