@@ -51,7 +51,6 @@ class AlertHistoryActivity : AppCompatActivity() {
     private lateinit var paginationBar: LinearLayout
     private lateinit var btnFilterToggle: MaterialButton
     private lateinit var tvSubtitle: TextView
-    private lateinit var tvPageInfo: TextView
 
     private lateinit var viewModel: AlertHistoryViewModel
     private lateinit var adapter: AlertItemAdapter
@@ -96,10 +95,8 @@ class AlertHistoryActivity : AppCompatActivity() {
         tvEmptyText = findViewById(R.id.tv_empty_text)
         actionBar = findViewById(R.id.action_bar)
         filterRow = findViewById(R.id.filter_row)
-        paginationBar = findViewById(R.id.pagination_bar)
         btnFilterToggle = findViewById(R.id.btn_filter_toggle)
         tvSubtitle = findViewById(R.id.tv_alert_subtitle)
-        tvPageInfo = findViewById(R.id.tv_page_info)
 
         AnimationUtil.applyScaleClickAnimation(findViewById(R.id.btn_back)) { finish() }
         AnimationUtil.applyScaleClickAnimation(findViewById(R.id.btn_settings)) { showSettingsDialog() }
@@ -107,7 +104,7 @@ class AlertHistoryActivity : AppCompatActivity() {
         registerRefreshReceiver()
         setupActionBar()
         setupFilterToggle()
-        setupPagination()
+        setupPaginationBar()
         setupRecyclerView()
         observeData()
     }
@@ -215,26 +212,25 @@ class AlertHistoryActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════════
-    // 翻页栏
+    // 翻页栏（PaginationBarHelper 公共组件）
     // ═══════════════════════════════════════════
 
-    private fun setupPagination() {
-        AnimationUtil.applyScaleClickAnimation(findViewById(R.id.btn_first)) { viewModel.firstPage() }
-        AnimationUtil.applyScaleClickAnimation(findViewById(R.id.btn_prev)) { viewModel.prevPage() }
-        AnimationUtil.applyScaleClickAnimation(findViewById(R.id.btn_next)) { viewModel.nextPage() }
-        AnimationUtil.applyScaleClickAnimation(findViewById(R.id.btn_last)) { viewModel.lastPage() }
-    }
-
-    private fun updatePaginationUI(result: PageResult) {
-        tvPageInfo.text = "${result.currentPage} / ${result.totalPages}"
-        findViewById<MaterialButton>(R.id.btn_first).isEnabled = result.currentPage > 1
-        findViewById<MaterialButton>(R.id.btn_prev).isEnabled = result.currentPage > 1
-        findViewById<MaterialButton>(R.id.btn_next).isEnabled = result.currentPage < result.totalPages
-        findViewById<MaterialButton>(R.id.btn_last).isEnabled = result.currentPage < result.totalPages
+    private fun setupPaginationBar() {
+        val container = findViewById<LinearLayout>(R.id.pagination_bar_container)
+        paginationBar = PaginationBarHelper.create(this) { action ->
+            when (action) {
+                PaginationBarHelper.Action.FIRST -> viewModel.firstPage()
+                PaginationBarHelper.Action.PREV -> viewModel.prevPage()
+                PaginationBarHelper.Action.NEXT -> viewModel.nextPage()
+                PaginationBarHelper.Action.LAST -> viewModel.lastPage()
+                is PaginationBarHelper.Action.Jump -> viewModel.goToPage(action.page)
+            }
+        }
+        container.addView(paginationBar)
     }
 
     // ═══════════════════════════════════════════
-    // 设置弹窗（createPresetRow）
+    // 设置弹窗
     // ═══════════════════════════════════════════
 
     private fun showSettingsDialog() {
@@ -295,10 +291,10 @@ class AlertHistoryActivity : AppCompatActivity() {
     private fun fillWidth() = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
     // ═══════════════════════════════════════════
-    // RecyclerView + ItemTouchHelper
+    // RecyclerView + 滑动动画（优化阈值同步）
     // ═══════════════════════════════════════════
 
-    @SuppressLint("ClickableViewNotifications")
+    @SuppressLint("ClickableViewAccessibility")
     private fun setupRecyclerView() {
         adapter = AlertItemAdapter { record, _ -> showAlertActionDialog(record) }
         alertList.layoutManager = LinearLayoutManager(this)
@@ -310,7 +306,10 @@ class AlertHistoryActivity : AppCompatActivity() {
             if (velocityTracker == null) velocityTracker = VelocityTracker.obtain()
             velocityTracker?.addMovement(event)
             if (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL) {
-                velocityTracker?.let { vt -> vt.computeCurrentVelocity(1000); lastSwipeVelocityDpPerSec = Math.abs(vt.xVelocity) / resources.displayMetrics.density }
+                velocityTracker?.let { vt ->
+                    vt.computeCurrentVelocity(1000)
+                    lastSwipeVelocityDpPerSec = Math.abs(vt.xVelocity) / resources.displayMetrics.density
+                }
                 velocityTracker?.recycle(); velocityTracker = null
             }
             false
@@ -318,9 +317,30 @@ class AlertHistoryActivity : AppCompatActivity() {
         ItemTouchHelper(SwipeCallback()).attachToRecyclerView(alertList)
     }
 
+    /**
+     * 滑动回调 — 统一阈值体系：
+     *
+     * 触发条件（满足任一即可）：
+     *   - ratio >= 0.35（慢拖，超过卡片宽度 35%）
+     *   - ratio >= 0.20 且 velocity >= 600 dp/s（快扫）
+     *
+     * 视觉反馈（与阈值同步）：
+     *   - 背景色透明度随 ratio 线性增长（0 → 180 alpha）
+     *   - ratio >= 0.20 时显示文字提示（"已读 ✓" / "✕ 删除"）
+     *   - ratio >= 0.35 时文字提示变为高亮（alpha 1.0）
+     *   - 卡片微缩放（最大 3%）增强触感
+     */
     private inner class SwipeCallback : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT) {
-        private val labelPaint = Paint().apply { color = Color.WHITE; textSize = dpF(14f); typeface = Typeface.DEFAULT_BOLD; isAntiAlias = true }
+        private val labelPaint = Paint().apply {
+            color = Color.WHITE; textSize = dpF(14f)
+            typeface = Typeface.DEFAULT_BOLD; isAntiAlias = true
+        }
         private var peakTranslationX = 0f
+
+        // 阈值常量（dp 转 px 后比较）
+        private val SLOW_RATIO = 0.35f
+        private val FAST_RATIO = 0.20f
+        private val FAST_VELOCITY = 600f // dp/s
 
         override fun onMove(rv: RecyclerView, vh: RecyclerView.ViewHolder, t: RecyclerView.ViewHolder) = false
         override fun onSwiped(vh: RecyclerView.ViewHolder, d: Int) {}
@@ -329,33 +349,69 @@ class AlertHistoryActivity : AppCompatActivity() {
 
         override fun onChildDraw(c: Canvas, rv: RecyclerView, vh: RecyclerView.ViewHolder, dX: Float, dY: Float, actionState: Int, isCurrentlyActive: Boolean) {
             val iv = vh.itemView
-            if (dX == 0f && !isCurrentlyActive) { peakTranslationX = 0f; super.onChildDraw(c, rv, vh, dX, dY, actionState, isCurrentlyActive); return }
-            if (Math.abs(dX) > Math.abs(peakTranslationX)) peakTranslationX = dX
-            val bp = Paint().apply { isAntiAlias = true }; val cr = dpF(12f); val a = Math.abs(dX)
-            if (dX > 0) {
-                bp.color = Color.argb((a / iv.width * 180).toInt().coerceIn(0, 180), 76, 175, 80)
-                c.drawRoundRect(RectF(iv.left.toFloat(), iv.top.toFloat(), iv.left + dX, iv.bottom.toFloat()), cr, cr, bp)
-                if (a > dpF(30f)) { val t = "已读  ✓"; val tw = labelPaint.measureText(t); c.drawText(t, iv.left + (dX - tw) / 2f, iv.top + iv.height / 2f + labelPaint.textSize / 3f, labelPaint) }
-            } else {
-                bp.color = Color.argb((a / iv.width * 180).toInt().coerceIn(0, 180), 244, 67, 54)
-                c.drawRoundRect(RectF(iv.right + dX, iv.top.toFloat(), iv.right.toFloat(), iv.bottom.toFloat()), cr, cr, bp)
-                if (a > dpF(30f)) { val t = "✕  删除"; val tw = labelPaint.measureText(t); c.drawText(t, iv.right + dX + (a - tw) / 2f, iv.top + iv.height / 2f + labelPaint.textSize / 3f, labelPaint) }
+            if (dX == 0f && !isCurrentlyActive) {
+                peakTranslationX = 0f
+                super.onChildDraw(c, rv, vh, dX, dY, actionState, isCurrentlyActive)
+                return
             }
-            val s = 1f - (a / iv.width * 0.03f).coerceAtMost(0.03f); iv.scaleX = s; iv.scaleY = s
+            if (Math.abs(dX) > Math.abs(peakTranslationX)) peakTranslationX = dX
+
+            val w = iv.width.toFloat()
+            val abs = Math.abs(dX)
+            val ratio = abs / w
+            val cr = dpF(14f)
+
+            // 背景色 alpha 随 ratio 线性增长
+            val bgAlpha = (ratio * 300f).toInt().coerceIn(0, 200)
+            val bp = Paint().apply { isAntiAlias = true }
+
+            if (dX > 0) {
+                // 右滑 → 绿色（已读）
+                bp.color = Color.argb(bgAlpha, 76, 175, 80)
+                c.drawRoundRect(RectF(iv.left.toFloat(), iv.top.toFloat(), iv.left + dX, iv.bottom.toFloat()), cr, cr, bp)
+            } else {
+                // 左滑 → 红色（删除）
+                bp.color = Color.argb(bgAlpha, 244, 67, 54)
+                c.drawRoundRect(RectF(iv.right + dX, iv.top.toFloat(), iv.right.toFloat(), iv.bottom.toFloat()), cr, cr, bp)
+            }
+
+            // 文字提示（ratio >= 0.20 显示）
+            if (ratio >= FAST_RATIO) {
+                val highlight = ratio >= SLOW_RATIO
+                labelPaint.alpha = if (highlight) 255 else 160
+                val text = if (dX > 0) "已读  ✓" else "✕  删除"
+                val tw = labelPaint.measureText(text)
+                val tx = if (dX > 0) iv.left + (dX - tw) / 2f else iv.right + dX + (abs - tw) / 2f
+                val ty = iv.top + iv.height / 2f + labelPaint.textSize / 3f
+                c.drawText(text, tx, ty, labelPaint)
+            }
+
+            // 卡片微缩放（最大 2.5%）
+            val scale = 1f - (ratio * 0.025f).coerceAtMost(0.025f)
+            iv.scaleX = scale; iv.scaleY = scale
+
             super.onChildDraw(c, rv, vh, dX, dY, actionState, isCurrentlyActive)
         }
 
         override fun clearView(rv: RecyclerView, vh: RecyclerView.ViewHolder) {
-            val peak = peakTranslationX; val w = vh.itemView.width.toFloat()
+            val peak = peakTranslationX
+            val w = vh.itemView.width.toFloat()
             val pos = vh.bindingAdapterPosition
             val rec = if (pos != RecyclerView.NO_POSITION) adapter.currentList.getOrNull(pos) else null
-            super.clearView(rv, vh); vh.itemView.scaleX = 1f; vh.itemView.scaleY = 1f; peakTranslationX = 0f
+            super.clearView(rv, vh)
+            vh.itemView.scaleX = 1f; vh.itemView.scaleY = 1f
+            peakTranslationX = 0f
             if (rec == null || pos == RecyclerView.NO_POSITION) return
             val abs = Math.abs(peak); if (abs < dpF(10f)) return
-            val r = abs / w; val v = lastSwipeVelocityDpPerSec
-            if (r > 0.4f || (v > 800f && r > 0.15f) || (r > 0.25f && v > 500f)) {
+            val ratio = abs / w
+            val velocity = lastSwipeVelocityDpPerSec
+
+            // 触发判定（与视觉反馈同步）
+            val triggered = ratio >= SLOW_RATIO || (ratio >= FAST_RATIO && velocity >= FAST_VELOCITY)
+            if (triggered) {
                 if (peak > 0) {
-                    applyReadVisuals(vh); AlertHistoryManager.markRead(this@AlertHistoryActivity, rec.id)
+                    applyReadVisuals(vh)
+                    AlertHistoryManager.markRead(this@AlertHistoryActivity, rec.id)
                 } else if (peak < 0) {
                     AlertHistoryManager.remove(this@AlertHistoryActivity, rec.id)
                 }
@@ -366,10 +422,17 @@ class AlertHistoryActivity : AppCompatActivity() {
         private fun applyReadVisuals(vh: RecyclerView.ViewHolder) {
             val card = vh.itemView as? com.google.android.material.card.MaterialCardView ?: return
             val content = card.getChildAt(0) as? LinearLayout ?: return
-            content.findViewWithTag<View>("bar")?.visibility = View.GONE
-            content.findViewWithTag<View>("barGap")?.visibility = View.GONE
-            content.findViewWithTag<ImageView>("icon")?.alpha = 0.5f
-            content.findViewWithTag<TextView>("title")?.setTypeface(null, Typeface.NORMAL)
+            content.findViewWithTag<ImageView>("icon")?.alpha = 0.45f
+            content.findViewWithTag<TextView>("title")?.apply {
+                setTypeface(null, Typeface.NORMAL)
+                alpha = 0.75f
+            }
+            content.findViewWithTag<TextView>("message")?.alpha = 0.65f
+            // 色条变灰
+            content.findViewWithTag<View>("bar")?.background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 2 * vh.itemView.resources.displayMetrics.density
+                setColor((ThemeColors.textSecondary(vh.itemView.context) and 0x00FFFFFF) or 0x30000000)
+            }
         }
     }
 
@@ -380,11 +443,10 @@ class AlertHistoryActivity : AppCompatActivity() {
     private fun observeData() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                // 页数据
                 launch {
                     viewModel.pageData.collect { result ->
                         adapter.submitList(result.data)
-                        updatePaginationUI(result)
+                        PaginationBarHelper.update(paginationBar, result.currentPage, result.totalPages)
                         val isEmpty = result.data.isEmpty()
                         emptyState.visibility = if (isEmpty) View.VISIBLE else View.GONE
                         alertList.visibility = if (isEmpty) View.GONE else View.VISIBLE
@@ -393,23 +455,18 @@ class AlertHistoryActivity : AppCompatActivity() {
                         } else {
                             tvEmptyText.text = "暂无警报记录"
                         }
-                        // 翻页时滚动到顶部
                         if (result.data.isNotEmpty()) alertList.scrollToPosition(0)
                     }
                 }
-
-                // 副标题 + 按钮可见性
                 launch {
                     viewModel.subtitleInfo.collect { (total, unread) ->
                         tvSubtitle.text = if (unread > 0) "共 ${total} 条，${unread} 条未读" else "共 ${total} 条"
                         if (total > 0) {
                             actionBar.visibility = View.VISIBLE
                             filterRow.visibility = View.VISIBLE
-                            paginationBar.visibility = View.VISIBLE
                         } else {
                             actionBar.visibility = View.GONE
                             filterRow.visibility = View.GONE
-                            paginationBar.visibility = View.GONE
                         }
                     }
                 }

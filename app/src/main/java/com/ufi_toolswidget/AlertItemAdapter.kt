@@ -18,9 +18,11 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 警报列表 Adapter（传统分页，非 Paging3）。
+ * 警报列表 Adapter（传统分页）。
  *
- * 使用 MaterialCardView 包裹，确保滑动时圆角无锯齿。
+ * 卡片设计：左侧常驻色条 + 图标 + 标题/消息/时间文本区。
+ * 未读：色条=accent，标题粗体，图标高亮。
+ * 已读：色条=secondary(半透)，标题常规，图标半透。
  */
 class AlertItemAdapter(
     private val onItemClick: (AlertRecord, View) -> Unit
@@ -30,7 +32,6 @@ class AlertItemAdapter(
         private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<AlertRecord>() {
             override fun areItemsTheSame(oldItem: AlertRecord, newItem: AlertRecord) =
                 oldItem.id == newItem.id
-
             override fun areContentsTheSame(oldItem: AlertRecord, newItem: AlertRecord) =
                 oldItem == newItem
         }
@@ -41,89 +42,111 @@ class AlertItemAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AlertViewHolder {
         val ctx = parent.context
-        val accent = ThemeColors.accent(ctx)
+        val d = ctx.resources.displayMetrics.density
         val textPrimary = ThemeColors.textPrimary(ctx)
         val textSecondary = ThemeColors.textSecondary(ctx)
+        val cardBg = ThemeColors.cardBg(ctx)
 
         val card = com.google.android.material.card.MaterialCardView(ctx).apply {
-            radius = ctx.resources.displayMetrics.density * 12f
+            radius = 14 * d
             cardElevation = 0f
             strokeWidth = 0
-            setCardBackgroundColor(ThemeColors.cardBg(ctx))
+            setCardBackgroundColor(cardBg)
             val lp = RecyclerView.LayoutParams(
                 RecyclerView.LayoutParams.MATCH_PARENT,
                 RecyclerView.LayoutParams.WRAP_CONTENT
             )
-            lp.bottomMargin = (ctx.resources.displayMetrics.density * 8).toInt()
+            lp.bottomMargin = (10 * d).toInt()
             layoutParams = lp
             isClickable = true
             isFocusable = true
         }
 
+        // 外层容器
         val content = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            val hPad = (ctx.resources.displayMetrics.density * 14).toInt()
-            val vPad = (ctx.resources.displayMetrics.density * 12).toInt()
-            setPadding(hPad, vPad, hPad, vPad)
+            setPadding((16 * d).toInt(), (14 * d).toInt(), (14 * d).toInt(), (14 * d).toInt())
         }
 
-        val barSpace = View(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(ctx, 3), dp(ctx, 36))
-            visibility = View.GONE
+        // 色条（常驻，未读=accent，已读=secondary半透）
+        val bar = View(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams((3 * d).toInt(), (40 * d).toInt())
             tag = "bar"
         }
-        content.addView(barSpace)
+        content.addView(bar)
 
+        // 色条间距
         val barGap = View(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(ctx, 10), 0)
-            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams((12 * d).toInt(), 0)
             tag = "barGap"
         }
         content.addView(barGap)
 
+        // 图标
         val icon = ImageView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(ctx, 22), dp(ctx, 22))
+            val size = (24 * d).toInt()
+            layoutParams = LinearLayout.LayoutParams(size, size)
             tag = "icon"
         }
         content.addView(icon)
 
+        // 文本区
         val textArea = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            lp.marginStart = dp(ctx, 12)
+            lp.marginStart = (12 * d).toInt()
             layoutParams = lp
         }
 
-        textArea.addView(TextView(ctx).apply {
-            textSize = 14f
+        // 标题行（标题 + 时间并排）
+        val titleRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        titleRow.addView(TextView(ctx).apply {
+            textSize = 14.5f
             setTextColor(textPrimary)
             tag = "title"
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
         })
 
-        textArea.addView(TextView(ctx).apply {
-            textSize = 12f
-            maxLines = 2
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            lp.topMargin = dp(ctx, 3)
-            layoutParams = lp
-            tag = "message"
-        })
-
-        textArea.addView(TextView(ctx).apply {
-            textSize = 11f
+        titleRow.addView(TextView(ctx).apply {
+            textSize = 10.5f
             setTextColor(textSecondary)
-            alpha = 0.6f
+            alpha = 0.55f
+            tag = "time"
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.marginStart = (6 * d).toInt()
+            layoutParams = lp
+            setPadding((6 * d).toInt(), (1 * d).toInt(), (6 * d).toInt(), (1 * d).toInt())
+        })
+
+        textArea.addView(titleRow)
+
+        // 消息（第二行）
+        textArea.addView(TextView(ctx).apply {
+            textSize = 12.5f
+            maxLines = 2
+            setTextColor(textSecondary)
+            tag = "message"
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-            lp.topMargin = dp(ctx, 4)
+            lp.topMargin = (4 * d).toInt()
             layoutParams = lp
-            tag = "time"
+            setLineSpacing(0f, 1.25f)
         })
 
         content.addView(textArea)
@@ -135,55 +158,62 @@ class AlertItemAdapter(
     override fun onBindViewHolder(holder: AlertViewHolder, position: Int) {
         val record = getItem(position) ?: return
         val ctx = holder.itemView.context
+        val d = ctx.resources.displayMetrics.density
         val accent = ThemeColors.accent(ctx)
         val textPrimary = ThemeColors.textPrimary(ctx)
         val textSecondary = ThemeColors.textSecondary(ctx)
 
         val content = holder.card.getChildAt(0) as LinearLayout
 
+        // 色条 — 常驻显示
         val bar = content.findViewWithTag<View>("bar")
         val barGap = content.findViewWithTag<View>("barGap")
         if (!record.isRead) {
             bar.visibility = View.VISIBLE
             bar.background = GradientDrawable().apply {
-                cornerRadius = ctx.resources.displayMetrics.density * 2f
+                cornerRadius = 2 * d
                 setColor(accent)
             }
             barGap.visibility = View.VISIBLE
         } else {
-            bar.visibility = View.GONE
-            barGap.visibility = View.GONE
+            bar.visibility = View.VISIBLE
+            bar.background = GradientDrawable().apply {
+                cornerRadius = 2 * d
+                setColor((textSecondary and 0x00FFFFFF) or 0x30000000)
+            }
+            barGap.visibility = View.VISIBLE
         }
 
+        // 图标
         val icon = content.findViewWithTag<ImageView>("icon")
         icon.setImageResource(typeToIconRes(record.type))
         val iconColor = if (!record.isRead) accent else textSecondary
         icon.setColorFilter(iconColor)
-        icon.alpha = if (record.isRead) 0.5f else 1f
+        icon.alpha = if (record.isRead) 0.45f else 1f
 
+        // 标题
         val title = content.findViewWithTag<TextView>("title")
         title.text = record.title
         title.setTextColor(textPrimary)
-        if (!record.isRead) {
-            title.setTypeface(null, Typeface.BOLD)
-        } else {
-            title.setTypeface(null, Typeface.NORMAL)
-        }
+        title.setTypeface(null, if (!record.isRead) Typeface.BOLD else Typeface.NORMAL)
+        title.alpha = if (record.isRead) 0.75f else 1f
 
-        val message = content.findViewWithTag<TextView>("message")
-        message.text = record.message
-        message.setTextColor(if (!record.isRead) textPrimary else textSecondary)
-
+        // 时间（标题行右侧）
         val time = content.findViewWithTag<TextView>("time")
         time.text = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
             .format(Date(record.timestamp))
+
+        // 消息
+        val message = content.findViewWithTag<TextView>("message")
+        message.text = record.message
+        message.setTextColor(if (!record.isRead) textPrimary else textSecondary)
+        message.alpha = if (record.isRead) 0.65f else 0.85f
 
         holder.card.setOnClickListener { onItemClick(record, holder.card) }
     }
 
     private fun typeToIconRes(type: String): Int = when (type) {
-        "daily_flow" -> R.drawable.ic_rocket
-        "monthly_flow" -> R.drawable.ic_rocket
+        "daily_flow", "monthly_flow" -> R.drawable.ic_rocket
         "temp" -> R.drawable.ic_temp
         "cpu" -> R.drawable.ic_cpu
         "memory" -> R.drawable.ic_chip
@@ -191,7 +221,4 @@ class AlertItemAdapter(
         "device_online" -> R.drawable.ic_router
         else -> R.drawable.ic_notification
     }
-
-    private fun dp(ctx: android.content.Context, value: Int): Int =
-        (value * ctx.resources.displayMetrics.density).toInt()
 }
