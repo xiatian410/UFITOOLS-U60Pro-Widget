@@ -205,20 +205,30 @@ class AlertHistoryActivity : AppCompatActivity() {
         val accent = ThemeColors.accent(this)
         val textSecondary = ThemeColors.textSecondary(this)
 
+        // 用 RotateDrawable 包裹 chevron 实现旋转指示
+        val baseIcon = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_chevron_right)
+        val rotateDrawable = android.graphics.drawable.RotateDrawable().apply {
+            drawable = baseIcon
+        }
+
         if (isFilterExpanded) {
             filterPanel.visibility = View.VISIBLE
             btnFilterToggle.text = "收起筛选"
             btnFilterToggle.setTextColor(accent)
             btnFilterToggle.iconTint = ColorStateList.valueOf(accent)
-            // 旋转图标 90° 指向下方
-            btnFilterToggle.icon.rotation = 90f
+            rotateDrawable.fromDegrees = 90f
+            rotateDrawable.toDegrees = 90f
+            rotateDrawable.level = 10000
         } else {
             filterPanel.visibility = View.GONE
             btnFilterToggle.text = "筛选"
             btnFilterToggle.setTextColor(textSecondary)
             btnFilterToggle.iconTint = ColorStateList.valueOf(textSecondary)
-            btnFilterToggle.icon.rotation = 0f
+            rotateDrawable.fromDegrees = 0f
+            rotateDrawable.toDegrees = 0f
+            rotateDrawable.level = 0
         }
+        btnFilterToggle.icon = rotateDrawable
     }
 
     private fun buildFilterPanel() {
