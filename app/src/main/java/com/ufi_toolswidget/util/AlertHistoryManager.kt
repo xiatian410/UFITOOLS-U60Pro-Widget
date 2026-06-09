@@ -2,180 +2,100 @@ package com.ufi_toolswidget.util
 
 import android.content.Context
 import android.content.Intent
-import org.json.JSONArray
-import org.json.JSONObject
+import androidx.paging.PagingSource
+import com.ufi_toolswidget.db.AlertDao
+import com.ufi_toolswidget.db.AlertRecord
+import com.ufi_toolswidget.db.AppDatabase
+import kotlinx.coroutines.flow.Flow
 
 /**
- * 单条警报记录。
- */
-data class AlertRecord(
-    val id: Long,              // 唯一 ID（System.currentTimeMillis）
-    val type: String,          // 类型标识（daily_flow / monthly_flow / temp / cpu / mem / battery / device_online）
-    val title: String,
-    val message: String,
-    val timestamp: Long,       // 触发时间戳
-    val isRead: Boolean = false
-) {
-    fun toJson(): JSONObject = JSONObject().apply {
-        put("id", id)
-        put("type", type)
-        put("title", title)
-        put("message", message)
-        put("timestamp", timestamp)
-        put("isRead", isRead)
-    }
-
-    companion object {
-        fun fromJson(json: JSONObject): AlertRecord = AlertRecord(
-            id = json.optLong("id"),
-            type = json.optString("type", ""),
-            title = json.optString("title", ""),
-            message = json.optString("message", ""),
-            timestamp = json.optLong("timestamp"),
-            isRead = json.optBoolean("isRead", false)
-        )
-    }
-}
-
-/**
- * 警报历史管理器。
+ * 警报历史管理器（Room 实现）。
  *
- * 使用 SharedPreferences + JSON 存储所有警报记录。
- * 最多保留 200 条，超出时自动清理最早记录。
+ * 提供与旧 SP 版本兼容的 API，内部使用 Room 数据库存储。
+ * 所有修改操作完成后发送 [ACTION_DATA_CHANGED] 广播，
+ * 供外部组件（如 MainActivity 未读红点）响应数据变更。
  */
 object AlertHistoryManager {
 
     private const val TAG = "AlertHistoryManager"
-    private const val SP_KEY = "alert_history_json"
-    private const val MAX_RECORDS = 200
-
     const val ACTION_DATA_CHANGED = "com.ufi_toolswidget.ALERT_HISTORY_CHANGED"
 
-    private var cachedList: MutableList<AlertRecord>? = null
+    @Volatile
+    private var dao: AlertDao? = null
 
-    /** 获取全部警报记录（最新在前） */
-    @Synchronized
-    fun getAll(ctx: Context): List<AlertRecord> {
-        if (cachedList == null) {
-            cachedList = loadFromSp(ctx)
+    /** 初始化数据库连接（建议在 Application.onCreate 中调用） */
+    fun initDatabase(context: Context) {
+        if (dao == null) {
+            synchronized(this) {
+                if (dao == null) {
+                    dao = AppDatabase.getInstance(context).alertDao()
+                }
+            }
         }
-        return cachedList!!.toList()
     }
+
+    private fun getDao(): AlertDao =
+        dao ?: throw IllegalStateException("AlertHistoryManager not initialized. Call initDatabase() first.")
+
+    /** 分页查询（PagingSource） */
+    fun getAllPaged(): PagingSource<Int, AlertRecord> = getDao().getAllPaged()
+
+    fun getPagedByType(type: String): PagingSource<Int, AlertRecord> =
+        getDao().getPagedByType(type)
+
+    fun getPagedByReadStatus(isRead: Boolean): PagingSource<Int, AlertRecord> =
+        getDao().getPagedByReadStatus(isRead)
+
+    fun getPagedFiltered(type: String, isRead: Boolean): PagingSource<Int, AlertRecord> =
+        getDao().getPagedFiltered(type, isRead)
 
     /** 未读数量 */
-    @Synchronized
-    fun getUnreadCount(ctx: Context): Int {
-        return getAll(ctx).count { !it.isRead }
-    }
+    fun getUnreadCount(ctx: Context): Int = getDao().getUnreadCount()
+
+    /** 未读数量观察（Flow，实时响应 Room 变更） */
+    fun observeUnreadCount(): Flow<Int> = getDao().observeUnreadCount()
+
+    /** 总数观察（Flow） */
+    fun observeTotalCount(): Flow<Int> = getDao().observeTotalCount()
 
     /** 添加一条警报记录 */
-    @Synchronized
     fun addAlert(ctx: Context, type: String, title: String, message: String) {
-        val list = (cachedList ?: loadFromSp(ctx))
         val record = AlertRecord(
-            id = System.currentTimeMillis(),
             type = type,
             title = title,
             message = message,
             timestamp = System.currentTimeMillis()
         )
-        list.add(0, record)  // 最新在前
-        // 超过上限则裁剪
-        while (list.size > MAX_RECORDS) {
-            list.removeAt(list.size - 1)
-        }
-        cachedList = list
-        saveToSp(ctx, list)
-        DebugLogger.logApi(TAG, "Alert added: type=$type title=$title (total=${list.size})")
+        getDao().insert(record)
+        DebugLogger.logApi(TAG, "Alert added: type=$type title=$title")
         notifyChanged(ctx)
     }
 
     /** 标记单条为已读 */
-    @Synchronized
     fun markRead(ctx: Context, id: Long) {
-        val list = (cachedList ?: loadFromSp(ctx))
-        val idx = list.indexOfFirst { it.id == id }
-        if (idx >= 0 && !list[idx].isRead) {
-            list[idx] = list[idx].copy(isRead = true)
-            cachedList = list
-            saveToSp(ctx, list)
-            notifyChanged(ctx)
-        }
-    }
-
-    /** 标记全部已读 */
-    @Synchronized
-    fun markAllRead(ctx: Context) {
-        val list = (cachedList ?: loadFromSp(ctx))
-        var changed = false
-        for (i in list.indices) {
-            if (!list[i].isRead) {
-                list[i] = list[i].copy(isRead = true)
-                changed = true
-            }
-        }
-        if (changed) {
-            cachedList = list
-            saveToSp(ctx, list)
-            notifyChanged(ctx)
-        }
-    }
-
-    /** 删除单条记录 */
-    @Synchronized
-    fun remove(ctx: Context, id: Long) {
-        val list = (cachedList ?: loadFromSp(ctx))
-        val removed = list.removeAll { it.id == id }
-        if (removed) {
-            cachedList = list
-            saveToSp(ctx, list)
-            notifyChanged(ctx)
-        }
-    }
-
-    /** 清空全部记录 */
-    @Synchronized
-    fun clearAll(ctx: Context) {
-        cachedList = mutableListOf()
-        saveToSp(ctx, cachedList!!)
+        getDao().markRead(id)
         notifyChanged(ctx)
     }
 
-    /** 清除缓存，下次读取重新加载 */
-    @Synchronized
-    fun invalidateCache() {
-        cachedList = null
+    /** 标记全部已读 */
+    fun markAllRead(ctx: Context) {
+        getDao().markAllRead()
+        notifyChanged(ctx)
     }
 
-    // ── 内部存储 ──
+    /** 删除单条记录 */
+    fun remove(ctx: Context, id: Long) {
+        getDao().deleteById(id)
+        notifyChanged(ctx)
+    }
+
+    /** 清空全部记录 */
+    fun clearAll(ctx: Context) {
+        getDao().clearAll()
+        notifyChanged(ctx)
+    }
 
     private fun notifyChanged(ctx: Context) {
         ctx.sendBroadcast(Intent(ACTION_DATA_CHANGED))
-    }
-
-    private fun loadFromSp(ctx: Context): MutableList<AlertRecord> {
-        return try {
-            val json = SPUtil.getSp(ctx).getString(SP_KEY, "") ?: ""
-            if (json.isEmpty()) return mutableListOf()
-            val arr = JSONArray(json)
-            val list = mutableListOf<AlertRecord>()
-            for (i in 0 until arr.length()) {
-                list.add(AlertRecord.fromJson(arr.getJSONObject(i)))
-            }
-            list
-        } catch (e: Exception) {
-            DebugLogger.e(TAG, "loadFromSp failed: ${e.message}")
-            mutableListOf()
-        }
-    }
-
-    private fun saveToSp(ctx: Context, list: List<AlertRecord>) {
-        try {
-            val arr = JSONArray()
-            list.forEach { arr.put(it.toJson()) }
-            SPUtil.getSp(ctx).edit().putString(SP_KEY, arr.toString()).apply()
-        } catch (e: Exception) {
-            DebugLogger.e(TAG, "saveToSp failed: ${e.message}")
-        }
     }
 }

@@ -1,32 +1,39 @@
 package com.ufi_toolswidget
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.RenderEffect
-import android.graphics.Shader
+import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
-import android.view.HapticFeedbackConstants
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.animation.DecelerateInterpolator
-import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.paging.LoadState
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
+import com.ufi_toolswidget.db.AlertRecord
 import com.ufi_toolswidget.util.*
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -34,30 +41,56 @@ import java.util.Locale
 /**
  * 警报历史页面。
  *
- * 自定义列表项 UI（FrameLayout 包裹卡片），支持：
- * - 未读条目左侧主题色条 + 标题加粗
- * - 左右滑动：右滑标记已读（绿色 + "已读 ✓"），左滑删除（红色 + "删除 ✕"）
- * - 滑动过程中：弹性阻尼 + 模糊效果 + 缩放 + 背景混色 + 操作标签渐显
- * - 超过阈值：滑出 + 淡出 + 高度收缩动画
- * - 未达阈值：OvershootInterpolator 弹性回弹
- * - BroadcastReceiver 实时刷新
+ * - RecyclerView + Paging3 + Flow 实时刷新
+ * - ItemTouchHelper 实现左右滑动（MaterialCardView 圆角无锯齿）
+ * - ChipGroup 筛选（类型 + 已读状态）
+ * - ViewModel 管理筛选状态
  */
 class AlertHistoryActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "AlertHistoryActivity"
-        private const val SWIPE_THRESHOLD = 120   // dp
-        private const val ACTION_BAR_PADDING = 6   // dp
-        private const val MAX_BLUR = 14f           // px — 最大模糊半径
+        private const val ACTION_BAR_PADDING = 6
     }
 
-    private lateinit var alertList: LinearLayout
+    private lateinit var alertList: RecyclerView
     private lateinit var emptyState: View
     private lateinit var actionBar: LinearLayout
     private lateinit var tvSubtitle: TextView
+    private lateinit var filterTypeGroup: ChipGroup
+    private lateinit var filterReadGroup: ChipGroup
 
-    private val shortTimeFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+    private lateinit var viewModel: AlertHistoryViewModel
+    private lateinit var adapter: AlertItemAdapter
+
     private val fullTimeFormat = SimpleDateFormat("MM-dd HH:mm:ss", Locale.getDefault())
+
+    // ── 筛选选项 ──
+
+    private val typeFilters = listOf(
+        FilterOption("all", "全部"),
+        FilterOption("daily_flow", "日用量"),
+        FilterOption("monthly_flow", "月用量"),
+        FilterOption("temp", "温度"),
+        FilterOption("cpu", "CPU"),
+        FilterOption("memory", "内存"),
+        FilterOption("battery", "电池"),
+        FilterOption("device_online", "设备")
+    )
+
+    private val readFilters = listOf(
+        FilterOption("all", "全部"),
+        FilterOption("unread", "未读"),
+        FilterOption("read", "已读")
+    )
+
+    // ── 广播（未读红点同步） ──
+
+    private val refreshReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            adapter.refresh()
+        }
+    }
 
     // ═══════════════════════════════════════════
     // 生命周期
@@ -70,35 +103,26 @@ class AlertHistoryActivity : AppCompatActivity() {
         BackgroundUtil.applyWindowBackground(this)
         ThemeUtil.applyTheme(this, ThemeUtil.PageType.APP_SETTINGS)
 
+        viewModel = ViewModelProvider(this)[AlertHistoryViewModel::class.java]
+
         alertList = findViewById(R.id.alert_list)
         emptyState = findViewById(R.id.empty_state)
         actionBar = findViewById(R.id.action_bar)
         tvSubtitle = findViewById(R.id.tv_alert_subtitle)
+        filterTypeGroup = findViewById(R.id.filter_type_group)
+        filterReadGroup = findViewById(R.id.filter_read_group)
 
         AnimationUtil.applyScaleClickAnimation(findViewById(R.id.btn_back)) { finish() }
 
         registerRefreshReceiver()
-        buildActionBar()
-        refreshList()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        ThemeUtil.applyTheme(this, ThemeUtil.PageType.APP_SETTINGS)
-        refreshList()
+        buildFilterChips()
+        setupRecyclerView()
+        observeData()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         try { unregisterReceiver(refreshReceiver) } catch (_: Exception) {}
-    }
-
-    // ── 实时刷新广播 ──
-
-    private val refreshReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            refreshList()
-        }
     }
 
     private fun registerRefreshReceiver() {
@@ -113,6 +137,205 @@ class AlertHistoryActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════════
+    // RecyclerView + ItemTouchHelper
+    // ═══════════════════════════════════════════
+
+    private fun setupRecyclerView() {
+        adapter = AlertItemAdapter { record, _ -> showAlertActionDialog(record) }
+
+        alertList.layoutManager = LinearLayoutManager(this)
+        alertList.adapter = adapter
+        alertList.setHasFixedSize(false)
+        alertList.isNestedScrollingEnabled = true
+
+        // ItemTouchHelper：右滑已读，左滑删除
+        val swipeHelper = ItemTouchHelper(SwipeCallback())
+        swipeHelper.attachToRecyclerView(alertList)
+    }
+
+    /**
+     * 滑动回调：右滑标记已读，左滑删除。
+     * onChildDraw 在 MaterialCardView 后面绘制彩色背景 + 操作标签。
+     */
+    private inner class SwipeCallback : ItemTouchHelper.SimpleCallback(
+        0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT
+    ) {
+        private val labelPaint = Paint().apply {
+            color = Color.WHITE
+            textSize = dpF(14f)
+            typeface = Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+
+        override fun onMove(
+            rv: RecyclerView, vh: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder
+        ) = false
+
+        override fun onSwiped(vh: RecyclerView.ViewHolder, direction: Int) {
+            val pos = vh.bindingAdapterPosition
+            val record = adapter.peek(pos) ?: return
+            if (direction == ItemTouchHelper.RIGHT) {
+                AlertHistoryManager.markRead(this@AlertHistoryActivity, record.id)
+            } else {
+                AlertHistoryManager.remove(this@AlertHistoryActivity, record.id)
+            }
+        }
+
+        override fun onChildDraw(
+            c: Canvas, rv: RecyclerView, vh: RecyclerView.ViewHolder,
+            dX: Float, dY: Float, actionState: Int, isCurrentlyActive: Boolean
+        ) {
+            val itemView = vh.itemView
+            if (dX == 0f) {
+                super.onChildDraw(c, rv, vh, dX, dY, actionState, isCurrentlyActive)
+                return
+            }
+
+            val bgPaint = Paint().apply { isAntiAlias = true }
+            val cornerRadius = dpF(12f)
+
+            if (dX > 0) {
+                // 右滑 → 绿色已读
+                bgPaint.color = Color.parseColor("#4CAF50")
+                val rect = RectF(
+                    itemView.left.toFloat(), itemView.top.toFloat(),
+                    itemView.left + dX, itemView.bottom.toFloat()
+                )
+                c.drawRoundRect(rect, cornerRadius, cornerRadius, bgPaint)
+                val text = "已读  ✓"
+                val tw = labelPaint.measureText(text)
+                c.drawText(text,
+                    itemView.left + (dX - tw) / 2f,
+                    itemView.top + itemView.height / 2f + labelPaint.textSize / 3f,
+                    labelPaint)
+            } else {
+                // 左滑 → 红色删除
+                bgPaint.color = Color.parseColor("#F44336")
+                val rect = RectF(
+                    itemView.right + dX, itemView.top.toFloat(),
+                    itemView.right.toFloat(), itemView.bottom.toFloat()
+                )
+                c.drawRoundRect(rect, cornerRadius, cornerRadius, bgPaint)
+                val text = "✕  删除"
+                val tw = labelPaint.measureText(text)
+                c.drawText(text,
+                    itemView.right + dX + (-dX - tw) / 2f,
+                    itemView.top + itemView.height / 2f + labelPaint.textSize / 3f,
+                    labelPaint)
+            }
+
+            // 卡片微缩放
+            val scale = 1f - (Math.abs(dX) / itemView.width * 0.05f).coerceAtMost(0.05f)
+            itemView.scaleX = scale
+            itemView.scaleY = scale
+
+            super.onChildDraw(c, rv, vh, dX, dY, actionState, isCurrentlyActive)
+        }
+
+        override fun clearView(rv: RecyclerView, vh: RecyclerView.ViewHolder) {
+            super.clearView(rv, vh)
+            vh.itemView.scaleX = 1f
+            vh.itemView.scaleY = 1f
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    // 数据观察
+    // ═══════════════════════════════════════════
+
+    private fun observeData() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    viewModel.alerts.collect { pagingData ->
+                        adapter.submitData(pagingData)
+                    }
+                }
+                launch {
+                    adapter.loadStateFlow.collect { loadStates ->
+                        val refresh = loadStates.refresh
+                        if (refresh is LoadState.NotLoading) {
+                            val isEmpty = adapter.itemCount == 0
+                            emptyState.visibility = if (isEmpty) View.VISIBLE else View.GONE
+                            alertList.visibility = if (isEmpty) View.GONE else View.VISIBLE
+                            actionBar.visibility = if (isEmpty) View.GONE else View.VISIBLE
+                        }
+                    }
+                }
+                launch {
+                    viewModel.unreadCount.collect { count ->
+                        val total = adapter.itemCount
+                        tvSubtitle.text = if (count > 0) {
+                            "共 ${total} 条，${count} 条未读"
+                        } else {
+                            "共 ${total} 条"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    // 筛选 Chip
+    // ═══════════════════════════════════════════
+
+    private fun buildFilterChips() {
+        buildTypeFilterChips()
+        buildReadFilterChips()
+        buildActionBar()
+    }
+
+    private fun buildTypeFilterChips() {
+        filterTypeGroup.removeAllViews()
+        for ((index, opt) in typeFilters.withIndex()) {
+            val chip = createFilterChip(opt.label, index == 0)
+            chip.setOnClickListener {
+                viewModel.filter.value = viewModel.filter.value.copy(type = opt.id)
+                adapter.refresh()
+            }
+            filterTypeGroup.addView(chip)
+        }
+    }
+
+    private fun buildReadFilterChips() {
+        filterReadGroup.removeAllViews()
+        for ((index, opt) in readFilters.withIndex()) {
+            val chip = createFilterChip(opt.label, index == 0)
+            chip.setOnClickListener {
+                viewModel.filter.value = viewModel.filter.value.copy(readStatus = opt.id)
+                adapter.refresh()
+            }
+            filterReadGroup.addView(chip)
+        }
+    }
+
+    @SuppressLint("PrivateResource")
+    private fun createFilterChip(text: String, isChecked: Boolean): Chip {
+        val accent = ThemeColors.accent(this)
+        return Chip(this).apply {
+            this.text = text
+            this.isChecked = isChecked
+            isCheckable = true
+            textSize = 12f
+            chipMinHeight = dpF(28f)
+            val hPad = dp(10)
+            val vPad = dp(2)
+            setPadding(hPad, vPad, hPad, vPad)
+            setTextColor(android.content.res.ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(Color.WHITE, accent)
+            ))
+            chipBackgroundColor = android.content.res.ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(accent, Color.TRANSPARENT)
+            )
+            chipStrokeColor = android.content.res.ColorStateList.valueOf(accent and 0x60FFFFFF)
+            chipStrokeWidth = dpF(1f)
+        }
+    }
+
+    // ═══════════════════════════════════════════
     // Action bar
     // ═══════════════════════════════════════════
 
@@ -123,22 +346,13 @@ class AlertHistoryActivity : AppCompatActivity() {
 
         actionBar.addView(buildChipButton("全部已读", R.drawable.ic_check, accent) {
             AlertHistoryManager.markAllRead(this)
-            refreshList()
         })
         actionBar.addView(buildChipButton("清空", null, subColor) {
             showClearConfirmDialog()
         })
     }
 
-    /**
-     * 构建 chip 风格文字按钮：圆角描边背景 + 图标（可选）。
-     */
-    private fun buildChipButton(
-        text: String,
-        iconRes: Int?,
-        color: Int,
-        onClick: () -> Unit
-    ): View {
+    private fun buildChipButton(text: String, iconRes: Int?, color: Int, onClick: () -> Unit): View {
         val ctx = this
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -159,7 +373,6 @@ class AlertHistoryActivity : AppCompatActivity() {
             isClickable = true
             isFocusable = true
         }
-
         if (iconRes != null) {
             row.addView(ImageView(ctx).apply {
                 setImageResource(iconRes)
@@ -170,400 +383,13 @@ class AlertHistoryActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(dp(5), 0)
             })
         }
-
         row.addView(TextView(ctx).apply {
             this.text = text
             textSize = 12f
             setTextColor(color)
         })
-
         AnimationUtil.applyScaleClickAnimation(row) { onClick() }
         return row
-    }
-
-    // ═══════════════════════════════════════════
-    // 列表刷新
-    // ═══════════════════════════════════════════
-
-    private fun refreshList() {
-        alertList.removeAllViews()
-        val records = AlertHistoryManager.getAll(this)
-
-        if (records.isEmpty()) {
-            alertList.visibility = View.GONE
-            emptyState.visibility = View.VISIBLE
-            actionBar.visibility = View.GONE
-            tvSubtitle.text = "暂无警报记录"
-            return
-        }
-
-        alertList.visibility = View.VISIBLE
-        emptyState.visibility = View.GONE
-        actionBar.visibility = View.VISIBLE
-
-        val unreadCount = records.count { !it.isRead }
-        tvSubtitle.text = if (unreadCount > 0) {
-            "共 ${records.size} 条，${unreadCount} 条未读"
-        } else {
-            "共 ${records.size} 条"
-        }
-
-        for (record in records) {
-            alertList.addView(buildAlertItem(record))
-        }
-    }
-
-    // ═══════════════════════════════════════════
-    // 列表项 UI（FrameLayout = 背景标签层 + 卡片层）
-    // ═══════════════════════════════════════════
-
-    @SuppressLint("ClickableViewAccessibility")
-    private fun buildAlertItem(record: AlertRecord): View {
-        val ctx = this
-        val accent = ThemeColors.accent(ctx)
-        val textPrimary = ThemeColors.textPrimary(ctx)
-        val textSecondary = ThemeColors.textSecondary(ctx)
-        val cardBg = ThemeColors.cardBg(ctx)
-
-        // ── 外层 FrameLayout：承载背景标签 + 可滑动卡片 ──
-        val container = FrameLayout(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(8) }
-            clipChildren = false
-            clipToPadding = false
-        }
-
-        // ── 左侧背景标签：右滑已读（绿色） ──
-        val leftLabel = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            val bg = GradientDrawable().apply {
-                cornerRadius = dpF(12f)
-                setColor(Color.parseColor("#4CAF50"))
-            }
-            background = bg
-            setPadding(dp(20), dp(12), dp(20), dp(12))
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            ).apply { gravity = Gravity.START }
-            alpha = 0f
-
-            addView(ImageView(ctx).apply {
-                setImageResource(R.drawable.ic_check)
-                setColorFilter(Color.WHITE)
-                layoutParams = LinearLayout.LayoutParams(dp(18), dp(18))
-            })
-            addView(View(ctx).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(6), 0)
-            })
-            addView(TextView(ctx).apply {
-                text = "已读"
-                textSize = 13f
-                setTextColor(Color.WHITE)
-                setTypeface(null, Typeface.BOLD)
-            })
-        }
-        container.addView(leftLabel)
-
-        // ── 右侧背景标签：左滑删除（红色） ──
-        val rightLabel = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
-            val bg = GradientDrawable().apply {
-                cornerRadius = dpF(12f)
-                setColor(Color.parseColor("#F44336"))
-            }
-            background = bg
-            setPadding(dp(20), dp(12), dp(20), dp(12))
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            ).apply { gravity = Gravity.END }
-            alpha = 0f
-
-            addView(TextView(ctx).apply {
-                text = "删除"
-                textSize = 13f
-                setTextColor(Color.WHITE)
-                setTypeface(null, Typeface.BOLD)
-            })
-            addView(View(ctx).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(6), 0)
-            })
-            addView(TextView(ctx).apply {
-                text = "✕"
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                setTypeface(null, Typeface.BOLD)
-            })
-        }
-        container.addView(rightLabel)
-
-        // ── 卡片本体 ──
-        val card = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            val bg = GradientDrawable().apply {
-                cornerRadius = dpF(12f)
-                setColor(cardBg)
-            }
-            background = bg
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
-            )
-            isClickable = true
-            isFocusable = true
-        }
-
-        // 左侧未读色条
-        if (!record.isRead) {
-            val bar = View(ctx).apply {
-                val barBg = GradientDrawable().apply {
-                    cornerRadius = dpF(2f)
-                    setColor(accent)
-                }
-                background = barBg
-                layoutParams = LinearLayout.LayoutParams(dp(3), dp(36))
-            }
-            card.addView(bar)
-            card.addView(View(ctx).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(10), 0)
-            })
-        }
-
-        // 图标
-        val iconView = ImageView(ctx).apply {
-            setImageResource(typeToIconRes(record.type))
-            val iconColor = if (!record.isRead) accent else textSecondary
-            setColorFilter(iconColor)
-            alpha = if (record.isRead) 0.5f else 1f
-            layoutParams = LinearLayout.LayoutParams(dp(22), dp(22))
-        }
-        card.addView(iconView)
-
-        // 文本区
-        val textArea = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            lp.marginStart = dp(12)
-            layoutParams = lp
-        }
-
-        textArea.addView(TextView(ctx).apply {
-            text = record.title
-            textSize = 14f
-            setTextColor(textPrimary)
-            if (!record.isRead) setTypeface(null, Typeface.BOLD)
-        })
-
-        textArea.addView(TextView(ctx).apply {
-            text = record.message
-            textSize = 12f
-            setTextColor(if (!record.isRead) textPrimary else textSecondary)
-            maxLines = 2
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            lp.topMargin = dp(3)
-            layoutParams = lp
-        })
-
-        textArea.addView(TextView(ctx).apply {
-            text = shortTimeFormat.format(Date(record.timestamp))
-            textSize = 11f
-            setTextColor(textSecondary)
-            alpha = 0.6f
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            lp.topMargin = dp(4)
-            layoutParams = lp
-        })
-
-        card.addView(textArea)
-        container.addView(card)
-
-        // ── 点击弹出详情 ──
-        card.setOnClickListener { showAlertActionDialog(record) }
-
-        // ── 滑动交互 ──
-        attachSwipeHandler(card, leftLabel, rightLabel, record)
-
-        return container
-    }
-
-    // ═══════════════════════════════════════════
-    // 滑动处理（阻尼 + 模糊 + 缩放 + 标签渐显 + 弹性回弹/滑出）
-    // ═══════════════════════════════════════════
-
-    @SuppressLint("ClickableViewAccessibility")
-    private fun attachSwipeHandler(card: View, leftLabel: View, rightLabel: View, record: AlertRecord) {
-        val threshold = dp(SWIPE_THRESHOLD).toFloat()
-        var startX = 0f
-        var startY = 0f
-        var isSwiping = false
-        var lastDx = 0f
-        var thresholdCrossed = false
-
-        card.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    startX = event.rawX
-                    startY = event.rawY
-                    isSwiping = false
-                    lastDx = 0f
-                    thresholdCrossed = false
-                    true
-                }
-
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - startX
-                    val dy = event.rawY - startY
-
-                    if (!isSwiping && Math.abs(dx) > dp(10) && Math.abs(dx) > Math.abs(dy) * 1.5f) {
-                        isSwiping = true
-                        v.parent?.requestDisallowInterceptTouchEvent(true)
-                    }
-
-                    if (isSwiping) {
-                        val absDx = Math.abs(dx)
-
-                        // ① 弹性阻尼位移
-                        v.translationX = dx * 0.6f
-                        lastDx = dx
-
-                        // ② 缩放：滑动越远卡片越小（微妙深度感）
-                        val scaleRatio = (absDx / threshold).coerceAtMost(1f)
-                        v.scaleX = 1f - scaleRatio * 0.05f
-                        v.scaleY = 1f - scaleRatio * 0.05f
-
-                        // ③ 模糊效果（API 31+）
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            val blur = (absDx / threshold * MAX_BLUR).coerceAtMost(MAX_BLUR)
-                            v.setRenderEffect(
-                                RenderEffect.createBlurEffect(blur, blur, Shader.TileMode.CLAMP)
-                            )
-                        }
-
-                        // ④ 背景混色 + 标签渐显
-                        val bg = v.background as? GradientDrawable
-                        val cardBgColor = ThemeColors.cardBg(this)
-                        val ratio = (absDx / threshold).coerceAtMost(1f)
-
-                        if (dx > 0) {
-                            // 右滑 → 绿色 + 显示"已读"标签
-                            bg?.setColor(blendColor(cardBgColor, Color.parseColor("#4CAF50"), ratio * 0.35f))
-                            leftLabel.alpha = ratio * 0.95f
-                            rightLabel.alpha = 0f
-                        } else {
-                            // 左滑 → 红色 + 显示"删除"标签
-                            bg?.setColor(blendColor(cardBgColor, Color.parseColor("#F44336"), ratio * 0.35f))
-                            rightLabel.alpha = ratio * 0.95f
-                            leftLabel.alpha = 0f
-                        }
-
-                        // ⑤ 越过阈值时触觉反馈
-                        if (absDx >= threshold && !thresholdCrossed) {
-                            thresholdCrossed = true
-                            v.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                        } else if (absDx < threshold) {
-                            thresholdCrossed = false
-                        }
-                    }
-                    true
-                }
-
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (isSwiping) {
-                        v.parent?.requestDisallowInterceptTouchEvent(false)
-                        val absDx = Math.abs(lastDx)
-
-                        if (absDx >= threshold) {
-                            // ── 超过阈值：滑出 + 淡出 + 高度收缩 ──
-                            val slideOut = if (lastDx > 0) v.width.toFloat() * 1.5f else -v.width.toFloat() * 1.5f
-                            v.animate()
-                                .translationX(slideOut)
-                                .alpha(0f)
-                                .scaleX(0.9f)
-                                .scaleY(0.9f)
-                                .setDuration(300)
-                                .setInterpolator(DecelerateInterpolator(1.5f))
-                                .setListener(object : AnimatorListenerAdapter() {
-                                    override fun onAnimationEnd(animation: Animator) {
-                                        // 清除渲染效果
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                            v.setRenderEffect(null)
-                                        }
-                                        v.scaleX = 1f
-                                        v.scaleY = 1f
-                                        // 高度收缩动画
-                                        val container = v.parent as? View
-                                        container?.animate()
-                                            ?.translationY(-container.height.toFloat())
-                                            ?.setDuration(200)
-                                            ?.setInterpolator(DecelerateInterpolator())
-                                            ?.withEndAction {
-                                                if (lastDx > 0) {
-                                                    AlertHistoryManager.markRead(this@AlertHistoryActivity, record.id)
-                                                } else {
-                                                    AlertHistoryManager.remove(this@AlertHistoryActivity, record.id)
-                                                }
-                                                refreshList()
-                                            }
-                                            ?.start()
-                                            ?: run {
-                                                // 无容器时直接刷新
-                                                if (lastDx > 0) {
-                                                    AlertHistoryManager.markRead(this@AlertHistoryActivity, record.id)
-                                                } else {
-                                                    AlertHistoryManager.remove(this@AlertHistoryActivity, record.id)
-                                                }
-                                                refreshList()
-                                            }
-                                    }
-                                })
-                                .start()
-                        } else {
-                            // ── 未超过阈值：弹性回弹 ──
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                v.setRenderEffect(null)
-                            }
-                            val bg = v.background as? GradientDrawable
-                            bg?.setColor(ThemeColors.cardBg(this))
-                            leftLabel.animate().alpha(0f).setDuration(200).start()
-                            rightLabel.animate().alpha(0f).setDuration(200).start()
-                            v.animate()
-                                .translationX(0f)
-                                .scaleX(1f)
-                                .scaleY(1f)
-                                .setDuration(350)
-                                .setInterpolator(android.view.animation.OvershootInterpolator(1.2f))
-                                .setListener(null)
-                                .start()
-                        }
-                    } else {
-                        return@setOnTouchListener false
-                    }
-                    true
-                }
-                else -> false
-            }
-        }
-    }
-
-    private fun blendColor(base: Int, overlay: Int, ratio: Float): Int {
-        val r = (Color.red(base) * (1 - ratio) + Color.red(overlay) * ratio).toInt()
-        val g = (Color.green(base) * (1 - ratio) + Color.green(overlay) * ratio).toInt()
-        val b = (Color.blue(base) * (1 - ratio) + Color.blue(overlay) * ratio).toInt()
-        val a = Color.alpha(base)
-        return Color.argb(a, r.coerceIn(0, 255), g.coerceIn(0, 255), b.coerceIn(0, 255))
     }
 
     // ═══════════════════════════════════════════
@@ -629,7 +455,6 @@ class AlertHistoryActivity : AppCompatActivity() {
             onPrimaryClick = { dialog ->
                 if (!record.isRead) {
                     AlertHistoryManager.markRead(ctx, record.id)
-                    refreshList()
                 }
                 dialog.dismiss()
             },
@@ -637,7 +462,6 @@ class AlertHistoryActivity : AppCompatActivity() {
             onSecondaryClick = { dialog ->
                 AlertHistoryManager.remove(ctx, record.id)
                 dialog.dismiss()
-                refreshList()
             }
         )
     }
@@ -659,7 +483,6 @@ class AlertHistoryActivity : AppCompatActivity() {
             onPrimaryClick = { dialog ->
                 AlertHistoryManager.clearAll(ctx)
                 dialog.dismiss()
-                refreshList()
             },
             secondaryBtnText = "取消",
             onSecondaryClick = { dialog -> dialog.dismiss() }
@@ -681,11 +504,11 @@ class AlertHistoryActivity : AppCompatActivity() {
         else -> R.drawable.ic_notification
     }
 
-    private fun dp(value: Int): Int {
-        return (value * resources.displayMetrics.density).toInt()
-    }
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 
-    private fun dpF(value: Float): Float {
-        return value * resources.displayMetrics.density
-    }
+    private fun dpF(value: Float): Float =
+        value * resources.displayMetrics.density
 }
+
+data class FilterOption(val id: String, val label: String)

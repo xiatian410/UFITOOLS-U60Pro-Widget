@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Build
 import com.google.android.material.color.DynamicColors
 import com.ufi_toolswidget.service.BackgroundMonitorService
+import com.ufi_toolswidget.util.AlertHistoryManager
 import com.ufi_toolswidget.util.CrashHandler
 import com.ufi_toolswidget.util.DebugLogger
 import com.ufi_toolswidget.util.NotificationHelper
@@ -40,6 +41,9 @@ class UfiToolsApplication : Application() {
 
         // 初始化通知渠道（Android 8.0+ 需要在应用启动时创建）
         NotificationHelper.init(this)
+
+        // 初始化警报历史 Room 数据库（首次启动时自动从旧 SP 迁移）
+        AlertHistoryManager.initDatabase(this)
 
         // 启动后台通知监控器：独立协程定时轻量检查阈值，
         // 不依赖任何 Activity，应用存活期间持续运行
