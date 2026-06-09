@@ -18,6 +18,7 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewGroup
+import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -43,10 +44,9 @@ import java.util.Locale
  * 警报历史页面。
  *
  * - RecyclerView + Paging3 + Flow 实时刷新
- * - ItemTouchHelper 智能滑动：getSwipeThreshold=MAX_VALUE 阻止 onSwiped，
- *   所有判定在 clearView 中完成，保证卡片自然回弹不卡住
- * - 独立操作按钮（全部已读 + 清空）+ 可折叠筛选面板
- * - ViewModel 管理筛选状态
+ * - ItemTouchHelper 智能滑动：onChildDraw 追踪峰值位移，clearView 判定操作
+ * - 独立操作按钮（全部已读 + 清空）+ 可折叠筛选面板（双列类型 + 单行状态）
+ * - ViewModel 管理筛选状态，subtitleInfo combine 流实时更新副标题
  */
 class AlertHistoryActivity : AppCompatActivity() {
 
@@ -59,7 +59,7 @@ class AlertHistoryActivity : AppCompatActivity() {
     private lateinit var actionBar: LinearLayout
     private lateinit var btnFilterToggle: MaterialButton
     private lateinit var filterPanel: LinearLayout
-    private lateinit var filterTypeGroup: LinearLayout
+    private lateinit var filterTypeGroup: GridLayout
     private lateinit var filterReadGroup: LinearLayout
     private lateinit var tvSubtitle: TextView
 
@@ -159,90 +159,82 @@ class AlertHistoryActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════════
-    // 操作按钮（全部已读 + 清空记录 — 独立按钮，参考公共弹窗按钮风格）
+    // 操作按钮 — 文字颜色在 applyScaleClickAnimation 之后强制设置
     // ═══════════════════════════════════════════
 
     private fun setupActionBar() {
         val accent = ThemeColors.accent(this)
+        val themeText = ThemeColors.textPrimary(this)
+        val dangerColor = Color.parseColor("#F44336")
 
-        // 全部已读 — accent 填充
+        // 全部已读 — accent 背景 + 主题文字色（深浅色自适应）
         val btnMarkAllRead = findViewById<MaterialButton>(R.id.btn_mark_all_read)
         btnMarkAllRead.backgroundTintList = ColorStateList.valueOf(accent)
         btnMarkAllRead.strokeWidth = 0
         btnMarkAllRead.strokeColor = ColorStateList.valueOf(accent)
-        btnMarkAllRead.setTextColor(Color.WHITE)
-        btnMarkAllRead.iconTint = ColorStateList.valueOf(Color.WHITE)
+        btnMarkAllRead.iconTint = ColorStateList.valueOf(themeText)
         AnimationUtil.applyScaleClickAnimation(btnMarkAllRead) {
             AlertHistoryManager.markAllRead(this)
         }
+        // 在 applyScaleClickAnimation 之后强制覆盖文字颜色
+        btnMarkAllRead.setTextColor(themeText)
 
-        // 清空记录 — 红色填充 + 垃圾桶图标
-        val dangerColor = Color.parseColor("#F44336")
+        // 清空记录 — 红色背景 + 白色文字
         val btnClearAll = findViewById<MaterialButton>(R.id.btn_clear_all)
         btnClearAll.backgroundTintList = ColorStateList.valueOf(dangerColor)
         btnClearAll.strokeWidth = 0
         btnClearAll.strokeColor = ColorStateList.valueOf(dangerColor)
-        btnClearAll.setTextColor(Color.WHITE)
         btnClearAll.iconTint = ColorStateList.valueOf(Color.WHITE)
         AnimationUtil.applyScaleClickAnimation(btnClearAll) {
             showClearConfirmDialog()
         }
+        // 在 applyScaleClickAnimation 之后强制覆盖文字颜色
+        btnClearAll.setTextColor(Color.WHITE)
     }
 
     // ═══════════════════════════════════════════
-    // 筛选面板（可折叠，默认收起）
+    // 筛选面板（可折叠，默认收起，带渐变滑入/滑出动画）
     // ═══════════════════════════════════════════
 
     private fun setupFilterToggle() {
-        val accent = ThemeColors.accent(this)
         val textSecondary = ThemeColors.textSecondary(this)
-
         btnFilterToggle.setTextColor(textSecondary)
         btnFilterToggle.iconTint = ColorStateList.valueOf(textSecondary)
-
         btnFilterToggle.setOnClickListener {
             isFilterExpanded = !isFilterExpanded
             updateFilterToggleState()
         }
     }
 
-    private fun updateFilterToggleState(animated: Boolean = true) {
+    private fun updateFilterToggleState() {
         val accent = ThemeColors.accent(this)
         val textSecondary = ThemeColors.textSecondary(this)
 
         if (isFilterExpanded) {
-            // 展开：先设置可见再动画进入
             filterPanel.visibility = View.VISIBLE
-            if (animated) {
-                filterPanel.alpha = 0f
-                filterPanel.translationY = -dp(8).toFloat()
-                filterPanel.animate()
-                    .alpha(1f)
-                    .translationY(0f)
-                    .setDuration(200)
-                    .setInterpolator(android.view.animation.DecelerateInterpolator())
-                    .start()
-            }
+            filterPanel.alpha = 0f
+            filterPanel.translationY = -dp(10).toFloat()
+            filterPanel.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(220)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
             btnFilterToggle.text = "收起筛选"
             btnFilterToggle.setTextColor(accent)
             btnFilterToggle.iconTint = ColorStateList.valueOf(accent)
         } else {
-            // 收起：动画退出后再隐藏
-            if (animated) {
-                filterPanel.animate()
-                    .alpha(0f)
-                    .translationY(-dp(8).toFloat())
-                    .setDuration(150)
-                    .setInterpolator(android.view.animation.AccelerateInterpolator())
-                    .withEndAction {
-                        filterPanel.visibility = View.GONE
-                        filterPanel.alpha = 1f
-                        filterPanel.translationY = 0f
-                    }
-                    .start()
-            } else {
-                filterPanel.visibility = View.GONE
-            }
+            filterPanel.animate()
+                .alpha(0f)
+                .translationY(-dp(10).toFloat())
+                .setDuration(160)
+                .setInterpolator(android.view.animation.AccelerateInterpolator())
+                .withEndAction {
+                    filterPanel.visibility = View.GONE
+                    filterPanel.alpha = 1f
+                    filterPanel.translationY = 0f
+                }
+                .start()
             btnFilterToggle.text = "筛选"
             btnFilterToggle.setTextColor(textSecondary)
             btnFilterToggle.iconTint = ColorStateList.valueOf(textSecondary)
@@ -250,67 +242,52 @@ class AlertHistoryActivity : AppCompatActivity() {
     }
 
     private fun buildFilterPanel() {
-        buildFilterRow(
-            filterTypeGroup, typeFilters,
-            typeButtons,
-            onSelect = { index ->
-                selectedTypeIndex = index
-                updateFilterButtonStyles()
-                viewModel.filter.value = viewModel.filter.value.copy(type = typeFilters[index].id)
-                adapter.refresh()
+        // 类型筛选 — GridLayout 双列
+        filterTypeGroup.removeAllViews()
+        typeButtons.clear()
+        for ((index, opt) in typeFilters.withIndex()) {
+            val btn = createFilterChip(opt.label, false, isGrid = true)
+            btn.setOnClickListener {
+                val clickedIndex = typeButtons.indexOf(btn)
+                if (clickedIndex != -1 && clickedIndex != selectedTypeIndex) {
+                    selectedTypeIndex = clickedIndex
+                    updateFilterButtonStyles()
+                    viewModel.filter.value = viewModel.filter.value.copy(type = typeFilters[clickedIndex].id)
+                    adapter.refresh()
+                }
             }
-        )
-        buildFilterRow(
-            filterReadGroup, readFilters,
-            readButtons,
-            onSelect = { index ->
-                selectedReadIndex = index
-                updateFilterButtonStyles()
-                viewModel.filter.value = viewModel.filter.value.copy(readStatus = readFilters[index].id)
-                adapter.refresh()
+            typeButtons.add(btn)
+            filterTypeGroup.addView(btn)
+        }
+
+        // 状态筛选 — LinearLayout 单行
+        filterReadGroup.removeAllViews()
+        readButtons.clear()
+        for ((index, opt) in readFilters.withIndex()) {
+            val btn = createFilterChip(opt.label, false, isGrid = false)
+            btn.setOnClickListener {
+                val clickedIndex = readButtons.indexOf(btn)
+                if (clickedIndex != -1 && clickedIndex != selectedReadIndex) {
+                    selectedReadIndex = clickedIndex
+                    updateFilterButtonStyles()
+                    viewModel.filter.value = viewModel.filter.value.copy(readStatus = readFilters[clickedIndex].id)
+                    adapter.refresh()
+                }
             }
-        )
+            readButtons.add(btn)
+            filterReadGroup.addView(btn)
+        }
+
         // 初始选中态
         updateFilterButtonStyles()
     }
 
-    private fun buildFilterRow(
-        container: LinearLayout,
-        options: List<FilterOption>,
-        buttonList: MutableList<MaterialButton>,
-        onSelect: (Int) -> Unit
-    ) {
-        container.removeAllViews()
-        buttonList.clear()
-        for ((index, opt) in options.withIndex()) {
-            val btn = createFilterChip(opt.label, false)
-            btn.setOnClickListener {
-                // 使用 buttonList.indexOf 实时获取当前索引，而非闭包捕获的值
-                val currentIndex = buttonList.indexOf(btn)
-                if (currentIndex != -1 && currentIndex != getSelectedIndex(buttonList)) {
-                    onSelect(index)
-                }
-            }
-            buttonList.add(btn)
-            container.addView(btn)
-        }
-    }
-
-    /** 获取当前选中的按钮索引（通过背景色判断） */
-    private fun getSelectedIndex(buttonList: List<MaterialButton>): Int {
-        val accent = ThemeColors.accent(this)
-        return buttonList.indexOfFirst { btn ->
-            val tint = btn.backgroundTintList?.defaultColor
-            tint == accent
-        }
-    }
-
     /**
-     * 创建筛选标签：选中时 accent 填充 + 白色文字（参考应用对话框选中项），
-     * 未选时卡片底色 + 主文字色。
+     * 创建筛选标签。isGrid=true 时用 GridLayout.LayoutParams（等宽两列），
+     * isGrid=false 时用 LinearLayout.LayoutParams（自适应宽度单行）。
      */
     @SuppressLint("PrivateResource")
-    private fun createFilterChip(text: String, selected: Boolean): MaterialButton {
+    private fun createFilterChip(text: String, selected: Boolean, isGrid: Boolean): MaterialButton {
         val accent = ThemeColors.accent(this)
         val textPrimary = ThemeColors.textPrimary(this)
         val cardBg = ThemeColors.cardBg(this)
@@ -331,12 +308,22 @@ class AlertHistoryActivity : AppCompatActivity() {
             textSize = 12f
             insetTop = 0
             insetBottom = 0
-            setPadding(dp(14), 0, dp(14), 0)
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)
-            )
-            lp.marginEnd = dp(6)
-            layoutParams = lp
+            setPadding(dp(12), 0, dp(12), 0)
+
+            layoutParams = if (isGrid) {
+                GridLayout.LayoutParams().apply {
+                    width = 0
+                    height = dp(36)
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                    setMargins(dp(2), dp(2), dp(2), dp(2))
+                }
+            } else {
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)
+                ).apply {
+                    marginEnd = dp(6)
+                }
+            }
         }
     }
 
@@ -394,12 +381,10 @@ class AlertHistoryActivity : AppCompatActivity() {
      * 滑动回调。
      *
      * 核心设计：
-     * 1. getSwipeThreshold() 返回 Float.MAX_VALUE，使 ItemTouchHelper
-     *    **永远不触发 onSwiped()**，卡片不会被当作"完成滑动"移出列表。
-     * 2. getSwipeEscapeVelocity() 返回 Float.MAX_VALUE，阻止快速甩动绕过距离阈值。
-     * 3. 手指松开后 ItemTouchHelper 自然将卡片回弹到原位，然后调用 clearView()。
-     * 4. 在 clearView() 中保存回弹前的 translationX，根据距离+速度综合判定
-     *    是否执行右滑已读 / 左滑删除。
+     * 1. getSwipeThreshold() = Float.MAX_VALUE → onSwiped 永远不触发
+     * 2. onChildDraw 中追踪峰值位移（peakTranslationX），因为 clearView
+     *    被调用时 translationX 可能已被 ItemTouchHelper 重置为 0
+     * 3. clearView 使用 peakTranslationX 判定操作
      */
     private inner class SwipeCallback : ItemTouchHelper.SimpleCallback(
         0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT
@@ -411,6 +396,9 @@ class AlertHistoryActivity : AppCompatActivity() {
             isAntiAlias = true
         }
 
+        /** 本次滑动过程中记录的最大位移（含方向） */
+        private var peakTranslationX = 0f
+
         override fun onMove(
             rv: RecyclerView, vh: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder
         ) = false
@@ -419,9 +407,6 @@ class AlertHistoryActivity : AppCompatActivity() {
             // 永远不会被调用（getSwipeThreshold = Float.MAX_VALUE）。
         }
 
-        /**
-         * 关键：禁用距离和速度两个默认阈值，让所有滑动都回到 clearView 处理。
-         */
         override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float =
             Float.MAX_VALUE
 
@@ -433,9 +418,16 @@ class AlertHistoryActivity : AppCompatActivity() {
             dX: Float, dY: Float, actionState: Int, isCurrentlyActive: Boolean
         ) {
             val itemView = vh.itemView
-            if (dX == 0f) {
+            if (dX == 0f && !isCurrentlyActive) {
+                // 滑动结束/重置
+                peakTranslationX = 0f
                 super.onChildDraw(c, rv, vh, dX, dY, actionState, isCurrentlyActive)
                 return
+            }
+
+            // 追踪峰值位移
+            if (Math.abs(dX) > Math.abs(peakTranslationX)) {
+                peakTranslationX = dX
             }
 
             val bgPaint = Paint().apply { isAntiAlias = true }
@@ -488,46 +480,34 @@ class AlertHistoryActivity : AppCompatActivity() {
 
         /**
          * 手指松开后由 ItemTouchHelper 调用。
-         * 此时卡片已经（或正在）回弹到原位。
-         * 在 super 重置 translationX 之前保存位移，判定操作。
+         * 使用 peakTranslationX（而非 itemView.translationX）判定操作，
+         * 因为 clearView 被调用时 translationX 可能已被重置为 0。
          */
         override fun clearView(rv: RecyclerView, vh: RecyclerView.ViewHolder) {
-            // ① 保存松手时的位移（super 会清零）
-            val savedTranslationX = vh.itemView.translationX
+            val savedPeakX = peakTranslationX
             val itemWidth = vh.itemView.width.toFloat()
             val pos = vh.bindingAdapterPosition
             val record = adapter.peek(pos)
 
-            // ② super 重置 itemView 属性
             super.clearView(rv, vh)
             vh.itemView.scaleX = 1f
             vh.itemView.scaleY = 1f
+            peakTranslationX = 0f
 
-            // ③ 判定是否执行操作
             if (record == null || pos == RecyclerView.NO_POSITION) return
 
-            val absDx = Math.abs(savedTranslationX)
-            if (absDx < dpF(10f)) return // 小于 10dp 忽略
+            val absDx = Math.abs(savedPeakX)
+            if (absDx < dpF(10f)) return
 
             if (shouldExecuteSwipe(absDx, itemWidth)) {
-                if (savedTranslationX > 0) {
-                    // 右滑 → 标记已读
+                if (savedPeakX > 0) {
                     AlertHistoryManager.markRead(this@AlertHistoryActivity, record.id)
-                } else if (savedTranslationX < 0) {
-                    // 左滑 → 删除
+                } else if (savedPeakX < 0) {
                     AlertHistoryManager.remove(this@AlertHistoryActivity, record.id)
                 }
             }
         }
 
-        /**
-         * 综合判定：距离 + 速度 + 幅度，防误触。
-         *
-         * 满足以下任一条件即执行：
-         * 1. 滑动距离 > 40% 卡片宽度
-         * 2. 滑动速度 > 800 dp/s 且距离 > 15% 卡片宽度
-         * 3. 滑动距离 > 25% 且速度 > 500 dp/s
-         */
         private fun shouldExecuteSwipe(absDx: Float, itemWidth: Float): Boolean {
             val distanceRatio = absDx / itemWidth
             val velocity = lastSwipeVelocityDpPerSec
@@ -559,8 +539,14 @@ class AlertHistoryActivity : AppCompatActivity() {
                             val isEmpty = adapter.itemCount == 0
                             emptyState.visibility = if (isEmpty) View.VISIBLE else View.GONE
                             alertList.visibility = if (isEmpty) View.GONE else View.VISIBLE
-                            actionBar.visibility = if (isEmpty) View.GONE else View.VISIBLE
-                            btnFilterToggle.visibility = if (isEmpty) View.GONE else View.VISIBLE
+                            // 只在列表真正为空时隐藏按钮，避免筛选切换时闪烁
+                            if (isEmpty) {
+                                actionBar.visibility = View.GONE
+                                btnFilterToggle.visibility = View.GONE
+                            } else {
+                                actionBar.visibility = View.VISIBLE
+                                btnFilterToggle.visibility = View.VISIBLE
+                            }
                         }
                     }
                 }

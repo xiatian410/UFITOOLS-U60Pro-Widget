@@ -58,7 +58,7 @@
         android:orientation="vertical"
         android:layout_marginHorizontal="16dp">
 
-        <!-- Action buttons (mark-all-read + clear) — 参考应用标准按钮风格 -->
+        <!-- Action buttons -->
         <LinearLayout
             android:id="@+id/action_bar"
             android:layout_width="match_parent"
@@ -99,14 +99,12 @@
                 android:text="清空记录"
                 android:textSize="14sp"
                 android:textStyle="bold"
-                android:textColor="@android:color/white"
                 android:letterSpacing="0.02"
                 app:cornerRadius="12dp"
                 app:icon="@drawable/ic_trash"
                 app:iconSize="16dp"
                 app:iconGravity="textStart"
-                app:iconPadding="6dp"
-                app:iconTint="@android:color/white" />
+                app:iconPadding="6dp" />
         </LinearLayout>
 
         <!-- Filter toggle button -->
@@ -133,6 +131,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
+            android:layout_marginBottom="10dp"
             android:visibility="gone">
 
             <TextView
@@ -144,19 +143,14 @@
                 android:layout_marginBottom="2dp"
                 android:layout_marginStart="4dp" />
 
-            <HorizontalScrollView
+            <!-- Type filter: 2-column GridLayout -->
+            <GridLayout
+                android:id="@+id/filter_type_group"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:scrollbars="none"
-                android:layout_marginBottom="6dp">
-
-                <LinearLayout
-                    android:id="@+id/filter_type_group"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical" />
-            </HorizontalScrollView>
+                android:columnCount="2"
+                android:rowCount="4"
+                android:layout_marginBottom="8dp" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -167,13 +161,13 @@
                 android:layout_marginBottom="2dp"
                 android:layout_marginStart="4dp" />
 
+            <!-- Read status filter: horizontal -->
             <LinearLayout
                 android:id="@+id/filter_read_group"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="4dp" />
+                android:gravity="center_vertical" />
         </LinearLayout>
     </LinearLayout>
 
