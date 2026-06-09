@@ -1038,10 +1038,13 @@ class MainActivity : AppCompatActivity() {
             val unreadDot = findViewById<View>(R.id.alert_unread_dot) ?: return
             val unreadCount = AlertHistoryManager.getUnreadCount(this)
             if (unreadCount > 0) {
-                val accent = ThemeColors.accent(this)
                 val bg = android.graphics.drawable.GradientDrawable().apply {
                     shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setColor(accent)
+                    setColor(android.graphics.Color.parseColor("#F44336"))
+                    setStroke(
+                        (resources.displayMetrics.density * 1.5f).toInt(),
+                        android.graphics.Color.WHITE
+                    )
                 }
                 unreadDot.background = bg
                 unreadDot.visibility = View.VISIBLE

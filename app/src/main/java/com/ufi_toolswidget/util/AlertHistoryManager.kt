@@ -7,18 +7,24 @@ import com.ufi_toolswidget.db.AlertDao
 import com.ufi_toolswidget.db.AlertRecord
 import com.ufi_toolswidget.db.AppDatabase
 import kotlinx.coroutines.flow.Flow
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * 警报历史管理器（Room 实现）。
  *
  * 提供与旧 SP 版本兼容的 API，内部使用 Room 数据库存储。
- * 所有修改操作完成后发送 [ACTION_DATA_CHANGED] 广播，
+ * 所有写操作通过 [writeLock] 串行化，防止清空与新增同时执行导致
+ * PagingSource 失效崩溃。
+ * 修改操作完成后发送 [ACTION_DATA_CHANGED] 广播，
  * 供外部组件（如 MainActivity 未读红点）响应数据变更。
  */
 object AlertHistoryManager {
 
     private const val TAG = "AlertHistoryManager"
     const val ACTION_DATA_CHANGED = "com.ufi_toolswidget.ALERT_HISTORY_CHANGED"
+
+    /** 串行化所有写操作，防止清空+新增并发导致 PagingSource 崩溃 */
+    private val writeLock = ReentrantLock()
 
     @Volatile
     private var dao: AlertDao? = null
@@ -58,40 +64,65 @@ object AlertHistoryManager {
     /** 总数观察（Flow） */
     fun observeTotalCount(): Flow<Int> = getDao().observeTotalCount()
 
-    /** 添加一条警报记录 */
+    /** 添加一条警报记录（加锁，防止与 clearAll 并发） */
     fun addAlert(ctx: Context, type: String, title: String, message: String) {
-        val record = AlertRecord(
-            type = type,
-            title = title,
-            message = message,
-            timestamp = System.currentTimeMillis()
-        )
-        getDao().insert(record)
-        DebugLogger.logApi(TAG, "Alert added: type=$type title=$title")
+        writeLock.lock()
+        try {
+            val record = AlertRecord(
+                type = type,
+                title = title,
+                message = message,
+                timestamp = System.currentTimeMillis()
+            )
+            getDao().insert(record)
+            DebugLogger.logApi(TAG, "Alert added: type=$type title=$title")
+        } finally {
+            writeLock.unlock()
+        }
         notifyChanged(ctx)
     }
 
-    /** 标记单条为已读 */
+    /** 标记单条为已读（加锁） */
     fun markRead(ctx: Context, id: Long) {
-        getDao().markRead(id)
+        writeLock.lock()
+        try {
+            getDao().markRead(id)
+        } finally {
+            writeLock.unlock()
+        }
         notifyChanged(ctx)
     }
 
-    /** 标记全部已读 */
+    /** 标记全部已读（加锁） */
     fun markAllRead(ctx: Context) {
-        getDao().markAllRead()
+        writeLock.lock()
+        try {
+            getDao().markAllRead()
+        } finally {
+            writeLock.unlock()
+        }
         notifyChanged(ctx)
     }
 
-    /** 删除单条记录 */
+    /** 删除单条记录（加锁） */
     fun remove(ctx: Context, id: Long) {
-        getDao().deleteById(id)
+        writeLock.lock()
+        try {
+            getDao().deleteById(id)
+        } finally {
+            writeLock.unlock()
+        }
         notifyChanged(ctx)
     }
 
-    /** 清空全部记录 */
+    /** 清空全部记录（加锁，防止与 addAlert 并发导致 PagingSource 崩溃） */
     fun clearAll(ctx: Context) {
-        getDao().clearAll()
+        writeLock.lock()
+        try {
+            getDao().clearAll()
+        } finally {
+            writeLock.unlock()
+        }
         notifyChanged(ctx)
     }
 

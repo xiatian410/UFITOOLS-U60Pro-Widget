@@ -101,7 +101,11 @@ class AlertHistoryActivity : AppCompatActivity() {
 
     private val refreshReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            adapter.refresh()
+            try {
+                adapter.refresh()
+            } catch (e: Exception) {
+                DebugLogger.e(TAG, "Adapter refresh failed: ${e.message}")
+            }
         }
     }
 
@@ -262,29 +266,36 @@ class AlertHistoryActivity : AppCompatActivity() {
     }
 
     /**
-     * 创建筛选标签：TextButton 风格，选中时 accent 描边高亮。
+     * 创建筛选标签：选中时 accent 填充 + 白色文字（参考应用对话框选中项），
+     * 未选时卡片底色 + 主文字色。
      */
     @SuppressLint("PrivateResource")
     private fun createFilterChip(text: String, selected: Boolean): MaterialButton {
         val accent = ThemeColors.accent(this)
         val textPrimary = ThemeColors.textPrimary(this)
+        val cardBg = ThemeColors.cardBg(this)
         return MaterialButton(this, null,
             com.google.android.material.R.attr.materialButtonStyle).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            setTextColor(if (selected) accent else textPrimary)
-            strokeColor = ColorStateList.valueOf(if (selected) accent else Color.TRANSPARENT)
-            strokeWidth = dp(1)
+            if (selected) {
+                backgroundTintList = ColorStateList.valueOf(accent)
+                setTextColor(Color.WHITE)
+            } else {
+                backgroundTintList = ColorStateList.valueOf(cardBg)
+                setTextColor(textPrimary)
+            }
+            strokeWidth = 0
             cornerRadius = dp(8)
             rippleColor = ColorStateList.valueOf(Color.argb(32,
                 Color.red(accent), Color.green(accent), Color.blue(accent)))
             this.text = text
-            textSize = 11f
+            textSize = 12f
             insetTop = 0
             insetBottom = 0
+            setPadding(dp(14), 0, dp(14), 0)
             val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)
+                LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)
             )
-            lp.marginEnd = dp(4)
+            lp.marginEnd = dp(6)
             layoutParams = lp
         }
     }
@@ -292,15 +303,16 @@ class AlertHistoryActivity : AppCompatActivity() {
     private fun updateFilterButtonStyles() {
         val accent = ThemeColors.accent(this)
         val textPrimary = ThemeColors.textPrimary(this)
+        val cardBg = ThemeColors.cardBg(this)
         typeButtons.forEachIndexed { i, btn ->
             val sel = i == selectedTypeIndex
-            btn.setTextColor(if (sel) accent else textPrimary)
-            btn.strokeColor = ColorStateList.valueOf(if (sel) accent else Color.TRANSPARENT)
+            btn.backgroundTintList = ColorStateList.valueOf(if (sel) accent else cardBg)
+            btn.setTextColor(if (sel) Color.WHITE else textPrimary)
         }
         readButtons.forEachIndexed { i, btn ->
             val sel = i == selectedReadIndex
-            btn.setTextColor(if (sel) accent else textPrimary)
-            btn.strokeColor = ColorStateList.valueOf(if (sel) accent else Color.TRANSPARENT)
+            btn.backgroundTintList = ColorStateList.valueOf(if (sel) accent else cardBg)
+            btn.setTextColor(if (sel) Color.WHITE else textPrimary)
         }
     }
 
