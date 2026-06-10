@@ -1,10 +1,10 @@
 {
-  "versionName": "0.1",
-  "versionCode": 1,
-  "tagName": "v0.1",
-  "apkUrl": "https://github.com/Asunano/UFITOOLS-Widget/releases/download/v0.1/UFITOOLS-Widget-v0.1.apk",
-  "apkSize": 2211155,
-  "apkSha256": "6e34da46607aa6475c03eaf194179ae2c82f19443d1da37fe1376f72125a8000",
-  "publishedAt": "2026-06-04T16:33:31Z",
-  "changelog": "- fix: detached HEAD push & CHANGELOG rewrite|- Merge branch 'main' of https://github.com/Asunano/UFITOOLS-Widget|- chore: prepare v0.1 release|- Update README with feature image and description|- Add files via upload|- Merge branch 'main' of https://github.com/Asunano/UFITOOLS-Widget|- refactor: UI overhaul, CI pipeline, cleanup unused deps|- Add files via upload|- fix: add contents:write permission for GitHub Release creation|- feat: 添加应用内更新检查、调试日志、主题联动、版本管理|- 重构: 统一4x2小组件、主题背景联动、三级导航、快捷方式权限|- fix|- fix|- fix|- Initial commit：UFI随身WiFi小组件源码|- Initial commit|"
+  "versionName": "0.2",
+  "versionCode": 2,
+  "tagName": "v0.2",
+  "apkUrl": "https://github.com/Asunano/UFITOOLS-Widget/releases/download/v0.2/UFITOOLS-Widget-v0.2.apk",
+  "apkSize": 2607854,
+  "apkSha256": "fcec25272053e3b793fbe9811f035544a45f3f61c3846708232eb9d1e4398574",
+  "publishedAt": "2026-06-10T17:02:15Z",
+  "changelog": "- docs: 更新 v0.2 版本日志|- feat: 版本 0.2 开发内容|- feat: 翻页栏公共组件+页码跳转+滑动动画优化+卡片UI重设计|- refactor: 移除Paging3改为传统翻页 + 修复筛选 + 实时刷新 + 筛选按钮独立右对齐|- fix: 分页maxSize限制 + 筛选按钮入操作栏 + 空态按钮不消失 + 弹窗统一presetRow样式|- fix: 按钮白字修复 + 筛选按钮移至操作栏下方 + 双栏筛选弹窗 + 分页修复 + 去重复时间|- feat: 按钮白色文字 + 筛选移至右侧 + 设置弹窗(分页/最大保存数)|- fix: 按钮对比度自动取色 + 滑动即时视觉反馈 + 筛选改为弹窗|- fix: 按钮取色+筛选切换闪烁+双列筛选+间距+滑动失效|- fix: 筛选切换bug + 按钮取色 + 动画 + 副标题实时更新|- fix: 修复编译错误 — Drawable.rotation改用RotateDrawable实现图标旋转|- fix: UI参考主应用主题 + 通知红点修复 + 并发崩溃修复|- fix: 滑动回弹彻底修复 + 操作按钮重构 + 可折叠筛选面板|- fix: 彻底修复滑动卡住 + UI改为应用统一卡片风格|- fix: UI统一 + 滑动回弹修复 + 智能滑动阈值|- feat: 警报历史重构 — Room + Paging3 + Flow + 筛选 + 滑动优化|- feat: 滑动交互增强 — 操作标签 + 模糊动画 + 实时刷新|- refactor: 警报历史UI优化 — 统一按钮样式 + 自定义列表项 + 滑动交互|- refactor: 警报历史入口条件显示 + UI采用公用组件重写|- feat: 通知不覆盖 + 警报历史功能|"
 }
