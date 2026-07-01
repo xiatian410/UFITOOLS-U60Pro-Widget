@@ -761,19 +761,15 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // 网络制式
-        val info = data.atNetworkInfo
-        val newNetText = if (info != null) {
-            val carrierText = info.carrier.ifEmpty { info.operator }
-            val typeText = info.networkType.replace(" NSA", "").replace(" SA", "")
-                .ifEmpty { data.netType }
+        // 网络制式（运营商 + 制式，均来自 Goform）
+        val newNetText = run {
+            val carrierText = data.carrier
+            val typeText = data.netType.replace(" NSA", "").replace(" SA", "")
             if (carrierText.isNotEmpty() && typeText.isNotEmpty() && !typeText.contains(carrierText)) {
                 "$carrierText $typeText"
             } else {
                 typeText.ifEmpty { carrierText.ifEmpty { "--" } }
             }
-        } else {
-            data.netType.ifEmpty { "--" }
         }
         DebugLogger.logUi(TAG, "Updating UI: net=$newNetText")
         AnimationUtil.smoothUpdateText(tvNetSignal, newNetText)
@@ -855,8 +851,7 @@ class MainActivity : AppCompatActivity() {
         h = 31 * h + data.appVerCode.hashCode()
         h = 31 * h + data.firmwareVer.hashCode()
         h = 31 * h + data.netType.hashCode()
-        h = 31 * h + (data.atNetworkInfo?.carrier.hashCode().toLong())
-        h = 31 * h + (data.atNetworkInfo?.networkType.hashCode().toLong())
+        h = 31 * h + data.carrier.hashCode().toLong()
         return h
     }
 
@@ -1303,8 +1298,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 "ip" -> {
-                    val currentHash = data.clientIp.hashCode().toLong() + data.wanIp.hashCode().toLong() +
-                                     (data.atNetworkInfo?.wanIpAt?.hashCode()?.toLong() ?: 0L)
+                    val currentHash = data.clientIp.hashCode().toLong() + data.wanIp.hashCode().toLong()
                     if (content.tag != currentHash) {
                         content.removeAllViews()
                         content.fillIpDetail(this@MainActivity, data)
@@ -1320,7 +1314,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 "network" -> {
-                    val currentHash = data.atNetworkInfo?.hashCode()?.toLong() ?: 0L
+                    val currentHash = data.netType.hashCode().toLong() + data.carrier.hashCode().toLong() +
+                                     data.goformImsi.hashCode().toLong() + data.wanIp.hashCode().toLong()
                     if (content.tag != currentHash) {
                         content.removeAllViews()
                         content.fillNetworkDetail(this@MainActivity, data)
@@ -1415,8 +1410,9 @@ class MainActivity : AppCompatActivity() {
             iconRes = R.drawable.ic_antenna,
             onFill = { with(MainDialogHelper) { it.fillNetworkDetail(this@MainActivity, data) } }
         )
-        dialog?.findViewById<LinearLayout>(R.id.common_dialog_content)?.tag = 
-            data.atNetworkInfo?.hashCode()?.toLong() ?: 0L
+        dialog?.findViewById<LinearLayout>(R.id.common_dialog_content)?.tag =
+            data.netType.hashCode().toLong() + data.carrier.hashCode().toLong() +
+            data.goformImsi.hashCode().toLong() + data.wanIp.hashCode().toLong()
     }
 
     private fun showFirmwareDetailDialog(data: WifiEntity) {
@@ -1437,9 +1433,8 @@ class MainActivity : AppCompatActivity() {
             iconRes = R.drawable.ic_router,
             onFill = { with(MainDialogHelper) { it.fillIpDetail(this@MainActivity, data) } }
         )
-        dialog?.findViewById<LinearLayout>(R.id.common_dialog_content)?.tag = 
-            data.clientIp.hashCode().toLong() + data.wanIp.hashCode().toLong() + 
-            (data.atNetworkInfo?.wanIpAt?.hashCode()?.toLong() ?: 0L)
+        dialog?.findViewById<LinearLayout>(R.id.common_dialog_content)?.tag =
+            data.clientIp.hashCode().toLong() + data.wanIp.hashCode().toLong()
     }
 
     private fun showTemperatureDialog(data: WifiEntity) {

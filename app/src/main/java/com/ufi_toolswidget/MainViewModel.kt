@@ -215,6 +215,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             cpu = sp.getString("cpu", "") ?: "",
             mem = sp.getString("mem", "") ?: "",
             netType = sp.getString("net_type", "") ?: "",
+            carrier = sp.getString("carrier", "") ?: "",
             appVer = sp.getString("app_ver", "") ?: "",
             appVerCode = sp.getString("app_ver_code", "") ?: "",
             batteryCurrent = sp.getString("battery_current", "") ?: "",
@@ -231,7 +232,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             firmwareVer = sp.getString("firmware_ver", "") ?: "",
             needToken = sp.getBoolean("need_token", false),
             // 以下为 API 瞬态字段，缓存时使用默认值
-            atNetworkInfo = null,
             cpuTempList = emptyList(),
             cpuFreqInfo = emptyMap(),
             cpuUsageInfo = emptyMap(),

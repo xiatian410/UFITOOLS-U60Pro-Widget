@@ -43,6 +43,7 @@ object SPUtil {
             .putString("cpu", data.cpu)
             .putString("mem", data.mem)
             .putString("net_type", data.netType)
+            .putString("carrier", data.carrier)
             .putString("app_ver", data.appVer)
             .putString("app_ver_code", data.appVerCode)
             .putString("battery_current", data.batteryCurrent)
@@ -60,8 +61,6 @@ object SPUtil {
             .putBoolean("need_token", data.needToken)
             .putString("update_time", time)
             .putInt("sp_cached_data_hash", dataHash)
-            // 同时保存 AT 命令解析的网络制式，供小组件优先使用（AT 比 Goform 稳定）
-            .putString("at_net_type", data.atNetworkInfo?.networkType ?: "")
             .apply()
     }
 
@@ -84,6 +83,7 @@ object SPUtil {
         h = 31 * h + data.cpu.hashCode()
         h = 31 * h + data.mem.hashCode()
         h = 31 * h + data.netType.hashCode()
+        h = 31 * h + data.carrier.hashCode()
         h = 31 * h + data.appVerCode.hashCode()
         h = 31 * h + data.batteryCurrent.hashCode()
         h = 31 * h + data.batteryVoltage.hashCode()       // 电池电压
@@ -96,14 +96,19 @@ object SPUtil {
     /** 读取缓存的 widget 数据哈希（由 [saveData] 写入），0 表示尚未缓存 */
     fun getCachedDataHash(ctx: Context): Int = getSp(ctx).getInt("sp_cached_data_hash", 0)
 
-    /** 获取 AT 命令解析的网络制式（小组件优先使用，比 Goform 稳定） */
-    fun getAtNetType(ctx: Context): String = getSp(ctx).getString("at_net_type", "") ?: ""
-
     // 认证与配置
     fun saveRawToken(ctx: Context, token: String) = getSp(ctx).edit().putString("raw_token", token).apply()
     fun getRawToken(ctx: Context) = getSp(ctx).getString("raw_token", "admin") ?: "admin"
     fun saveAuthToken(ctx: Context, token: String) = getSp(ctx).edit().putString("auth_token", token).apply()
     fun getAuthToken(ctx: Context) = getSp(ctx).getString("auth_token", "") ?: ""
+
+    /**
+     * 设备级预设令牌 device_token（64 位 hex），由免鉴权的 /api/need_token 返回。
+     * 除 §2 白名单外的所有 api 请求都必须携带 X-Device-Token 头，缺失将返回 401。
+     * 每台设备不同、随设备持久化不变，仅在切换设备地址时作废（见 invalidateResponseCaches）。
+     */
+    fun getDeviceToken(ctx: Context) = getSp(ctx).getString("device_token", "") ?: ""
+    fun setDeviceToken(ctx: Context, token: String) = getSp(ctx).edit().putString("device_token", token).apply()
 
     // 刷新频率 (单位: 分钟) — 后台 Worker 间隔
     fun setRefreshInterval(ctx: Context, minutes: Int) = getSp(ctx).edit().putInt("refresh_interval", minutes).apply()
@@ -407,16 +412,12 @@ object SPUtil {
     }
 
     // ==================== API 接口高级配置 ====================
-    const val DEFAULT_AT_COMMAND_PATH = "/api/AT"
     const val DEFAULT_DEVICE_INFO_PATH = "/api/baseDeviceInfo"
     const val DEFAULT_GOFORM_COMMAND_PATH = "/api/goform/goform_get_cmd_process"
     const val DEFAULT_NEED_TOKEN_PATH = "/api/need_token"
     const val DEFAULT_VERSION_INFO_PATH = "/api/version_info"
     //UFI-TOOLS文档中注明的固定秘钥：https://github.com/kanoqwq/UFI-TOOLS/blob/http-server-version/API_Doc.md
     const val DEFAULT_SECRET_KEY = "minikano_kOyXz0Ciz4V7wR0IeKmJFYFQ20jd"
-
-    fun getAtCommandPath(ctx: Context) = getSp(ctx).getString("at_command_path", DEFAULT_AT_COMMAND_PATH) ?: DEFAULT_AT_COMMAND_PATH
-    fun setAtCommandPath(ctx: Context, path: String) = getSp(ctx).edit().putString("at_command_path", path.ifBlank { DEFAULT_AT_COMMAND_PATH }).apply()
 
     fun getDeviceInfoPath(ctx: Context) = getSp(ctx).getString("device_info_path", DEFAULT_DEVICE_INFO_PATH) ?: DEFAULT_DEVICE_INFO_PATH
     fun setDeviceInfoPath(ctx: Context, path: String) = getSp(ctx).edit().putString("device_info_path", path.ifBlank { DEFAULT_DEVICE_INFO_PATH }).apply()
@@ -655,11 +656,6 @@ object SPUtil {
         }
     }
 
-    // ==================== 设备平台缓存（AT+CGMI 探测结果） ====================
-    // "spreadtrum" | "quectel" | "" (未探测)
-    fun getCachedPlatform(ctx: Context) = getSp(ctx).getString("device_platform", "") ?: ""
-    fun setCachedPlatform(ctx: Context, platform: String) = getSp(ctx).edit().putString("device_platform", platform).apply()
-
     /** 获取小组件背景透明度（0-100，默认 100 = 完全不透明） */
     fun getWidgetBgOpacity(ctx: Context) = getSp(ctx).getInt("widget_bg_opacity", 100)
 
@@ -805,25 +801,12 @@ object SPUtil {
     fun isNeedTokenCacheFresh(ctx: Context) =
         System.currentTimeMillis() - getNeedTokenCacheTime(ctx) < CACHE_TTL_HOUR_MS
 
-    // ── AT 静态字段缓存（CGMM 模块型号 / CGMR 固件版本 / CGSN IMEI）──
-    fun getCachedModuleModel(ctx: Context) = getSp(ctx).getString("cache_at_cgmm", "") ?: ""
-    fun setCachedModuleModel(ctx: Context, value: String) = getSp(ctx).edit().putString("cache_at_cgmm", value).apply()
-    fun getCachedFirmwareDetail(ctx: Context) = getSp(ctx).getString("cache_at_cgmr", "") ?: ""
-    fun setCachedFirmwareDetail(ctx: Context, value: String) = getSp(ctx).edit().putString("cache_at_cgmr", value).apply()
-    fun getCachedImeiFromAt(ctx: Context) = getSp(ctx).getString("cache_at_cgsn", "") ?: ""
-    fun setCachedImeiFromAt(ctx: Context, value: String) = getSp(ctx).edit().putString("cache_at_cgsn", value).apply()
-    fun getAtStaticCacheTime(ctx: Context) = getSp(ctx).getLong("cache_at_static_time", 0L)
-    fun setAtStaticCacheTime(ctx: Context, time: Long) = getSp(ctx).edit().putLong("cache_at_static_time", time).apply()
-    fun isAtStaticCacheFresh(ctx: Context) =
-        System.currentTimeMillis() - getAtStaticCacheTime(ctx) < CACHE_TTL_HOUR_MS
-
     /** 清除所有响应缓存（设备地址变更、Token 变更时调用，强制下轮全量刷新） */
     fun invalidateResponseCaches(ctx: Context) {
         getSp(ctx).edit()
             .putLong("cache_version_info_time", 0L)
             .putLong("cache_need_token_time", 0L)
-            .putLong("cache_at_static_time", 0L)
-            .putString("device_platform", "")  // 平台探测也一并清除
+            .remove("device_token")            // device_token 是设备级密钥，换设备后必须重新拉取
             .apply()
         DebugLogger.i("SPUtil", "invalidateResponseCaches: all response caches cleared")
     }

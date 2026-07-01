@@ -296,7 +296,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             val appVerCode = sp.getString("app_ver_code", "") ?: ""
             val cpu = sp.getString("cpu", "--") ?: "--"
             val mem = sp.getString("mem", "--") ?: "--"
-            val netType = sp.getString("at_net_type", "")?.ifEmpty { sp.getString("net_type", "") } ?: ""  // 优先 AT（稳定）→ Goform 回退
+            val netType = sp.getString("net_type", "") ?: ""  // Goform 网络制式
             val batteryCurrent = sp.getString("battery_current", "") ?: ""
             val internalStorage = sp.getString("internal_storage", "") ?: ""
             val updateTime = sp.getString("update_time", "--") ?: "--"
@@ -463,7 +463,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             val signal = sp.getString("signal", "--") ?: "--"
             val temp = sp.getString("temp", "--") ?: "--"
             val battery = sp.getString("battery", "--") ?: "--"
-            val netType = sp.getString("at_net_type", "")?.ifEmpty { sp.getString("net_type", "") } ?: ""  // 优先 AT（稳定）→ Goform 回退
+            val netType = sp.getString("net_type", "") ?: ""  // Goform 网络制式
             val hasNetworkData = netType.isNotEmpty() && signal != "--"
             val batteryCurrent = sp.getString("battery_current", "") ?: ""
             val updateTime = sp.getString("update_time", "--") ?: "--"
@@ -940,7 +940,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
             val signal = sp.getString("signal", "--") ?: "--"
             val battery = sp.getString("battery", "--") ?: "--"
-            val netType = sp.getString("at_net_type", "")?.ifEmpty { sp.getString("net_type", "") } ?: ""  // 优先 AT（稳定）→ Goform 回退
+            val netType = sp.getString("net_type", "") ?: ""  // Goform 网络制式
             val hasNetworkData = netType.isNotEmpty() && signal != "--"
             val batteryCurrent = sp.getString("battery_current", "") ?: ""
 
@@ -1126,7 +1126,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             val appVerCode = sp.getString("app_ver_code", "") ?: ""
             val cpu = sp.getString("cpu", "--") ?: "--"
             val mem = sp.getString("mem", "--") ?: "--"
-            val netType = sp.getString("at_net_type", "")?.ifEmpty { sp.getString("net_type", "") } ?: ""  // 优先 AT（稳定）→ Goform 回退
+            val netType = sp.getString("net_type", "") ?: ""  // Goform 网络制式
             val hasNetworkData = netType.isNotEmpty() && signal != "--"
             val batteryCurrent = sp.getString("battery_current", "") ?: ""
             val updateTime = sp.getString("update_time", "--") ?: "--"

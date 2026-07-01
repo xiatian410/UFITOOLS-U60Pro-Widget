@@ -38,7 +38,6 @@ class ConfigModifyActivity : AppCompatActivity() {
     private var deviceAddress: String = ""
     private var rawToken: String = ""
     private var deviceInfoPath: String = ""
-    private var atCommandPath: String = ""
     private var goformCommandPath: String = ""
     private var secretKey: String = ""
 
@@ -78,7 +77,6 @@ class ConfigModifyActivity : AppCompatActivity() {
         deviceAddress = SPUtil.getDeviceAddress(this)
         rawToken = SPUtil.getRawToken(this)
         deviceInfoPath = SPUtil.getDeviceInfoPath(this)
-        atCommandPath = SPUtil.getAtCommandPath(this)
         goformCommandPath = SPUtil.getGoformCommandPath(this)
         secretKey = SPUtil.getSecretKey(this)
     }
@@ -174,12 +172,6 @@ class ConfigModifyActivity : AppCompatActivity() {
                 inputType = InputType.TYPE_TEXT_VARIATION_URI
             ),
             DialogField(
-                label = "AT 命令接口",
-                currentValue = if (atCommandPath == SPUtil.DEFAULT_AT_COMMAND_PATH) "" else atCommandPath,
-                hint = "默认 ${SPUtil.DEFAULT_AT_COMMAND_PATH}",
-                inputType = InputType.TYPE_TEXT_VARIATION_URI
-            ),
-            DialogField(
                 label = "Goform 命令接口",
                 currentValue = if (goformCommandPath == SPUtil.DEFAULT_GOFORM_COMMAND_PATH) "" else goformCommandPath,
                 hint = "默认 ${SPUtil.DEFAULT_GOFORM_COMMAND_PATH}",
@@ -189,12 +181,6 @@ class ConfigModifyActivity : AppCompatActivity() {
                 label = "签名密钥",
                 currentValue = if (secretKey == SPUtil.DEFAULT_SECRET_KEY) "" else secretKey,
                 hint = "默认 ${SPUtil.DEFAULT_SECRET_KEY}",
-                inputType = InputType.TYPE_CLASS_TEXT
-            ),
-            DialogField(
-                label = "设备平台 (AT 解析)",
-                currentValue = SPUtil.getCachedPlatform(this).ifEmpty { "auto" },
-                hint = "auto / spreadtrum / quectel",
                 inputType = InputType.TYPE_CLASS_TEXT
             )
         )
@@ -207,31 +193,23 @@ class ConfigModifyActivity : AppCompatActivity() {
                 // 恢复所有高级字段为默认值
                 deviceInfoPath = ""
                 SPUtil.setDeviceInfoPath(this, "")
-                atCommandPath = ""
-                SPUtil.setAtCommandPath(this, "")
                 goformCommandPath = ""
                 SPUtil.setGoformCommandPath(this, "")
                 secretKey = ""
                 SPUtil.setSecretKey(this, "")
-                SPUtil.setCachedPlatform(this, "")
                 SPUtil.invalidateResponseCaches(this)
                 onConfigChanged()
             },
             onSave = { values ->
                 deviceInfoPath = values[0].trim()
                 SPUtil.setDeviceInfoPath(this, deviceInfoPath)
-                atCommandPath = values[1].trim()
-                SPUtil.setAtCommandPath(this, atCommandPath)
-                goformCommandPath = values[2].trim()
+                goformCommandPath = values[1].trim()
                 SPUtil.setGoformCommandPath(this, goformCommandPath)
-                secretKey = values[3].trim()
+                secretKey = values[2].trim()
                 SPUtil.setSecretKey(this, secretKey)
-                
+
                 // 接口路径或密钥变更，清除所有响应缓存以确保下轮使用新路径
                 SPUtil.invalidateResponseCaches(this)
-
-                val platform = values[4].trim().lowercase()
-                SPUtil.setCachedPlatform(this, if (platform == "auto") "" else platform)
 
                 onConfigChanged()
             }

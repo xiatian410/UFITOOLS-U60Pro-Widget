@@ -21,145 +21,45 @@ object MainDialogHelper {
     // ==================== 弹窗内容构建（LinearLayout 扩展函数） ====================
 
     fun LinearLayout.fillNetworkDetail(context: Context, data: WifiEntity) {
-        val info = data.atNetworkInfo
-        if (info == null) {
-            addView(emptyHintView(context, "暂无 AT 网络数据\n（设备可能不支持 AT 指令接口）"))
-            return
+        var hasAny = false
+
+        // 当前网络（运营商 + 制式，均来自 Goform）
+        if (data.carrier.isNotEmpty() || data.netType.isNotEmpty()) {
+            addView(sectionTitleView(context, "当前网络"))
+            if (data.carrier.isNotEmpty()) { addView(keyValueView(context, "运营商", data.carrier)); hasAny = true }
+            if (data.netType.isNotEmpty()) { addView(keyValueView(context, "网络制式", data.netType)); hasAny = true }
         }
 
-        // 运营商 + 网络类型
-        addView(sectionTitleView(context, "当前网络"))
-        val carrierText = info.carrier.ifEmpty { info.operator }
-        if (carrierText.isNotEmpty()) {
-            addView(keyValueView(context, "运营商", carrierText))
-        }
-        if (info.networkType.isNotEmpty()) {
-            addView(keyValueView(context, "网络制式", info.networkType))
-        }
-
-        // RSRP
-        if (info.rsrp > Int.MIN_VALUE) {
+        // 信号（Goform RSRP）
+        if (data.signal.isNotEmpty() && data.signal != "--") {
             addView(dividerView(context))
-            addView(sectionTitleView(context, "信号参数"))
-            // 防御：RSRP 物理上必须为负 dBm；若为正值则取反
-            val rsrpVal = if (info.rsrp > 0) -info.rsrp else info.rsrp
-            val rsrpLabel = when {
-                rsrpVal >= -85 -> "excellent"
-                rsrpVal >= -100 -> "good"
-                rsrpVal >= -110 -> "fair"
-                else -> "poor"
-            }
-            addView(keyValueView(context, "RSRP", "${rsrpVal} dBm  ($rsrpLabel)", rsrpVal < -110))
-
-            // SINR
-            if (info.sinr > Int.MIN_VALUE) {
-                val sinrLabel = when {
-                    info.sinr >= 20 -> "excellent"
-                    info.sinr >= 10 -> "good"
-                    info.sinr >= 0 -> "fair"
-                    else -> "poor"
-                }
-                addView(keyValueView(context, "SINR", "${info.sinr} dB  ($sinrLabel)", info.sinr < 0))
-            }
-
-            // RSRQ
-            if (info.rsrq > Int.MIN_VALUE) {
-                val rsrqLabel = when {
-                    info.rsrq >= -10 -> "excellent"
-                    info.rsrq >= -15 -> "good"
-                    info.rsrq >= -20 -> "fair"
-                    else -> "poor"
-                }
-                addView(keyValueView(context, "RSRQ", "${info.rsrq} dB  ($rsrqLabel)", info.rsrq < -20))
-            }
-        }
-
-        // 小区信息
-        var hasCell = false
-        if (info.band.isNotEmpty() || info.pci >= 0 || info.earfcn >= 0 || info.tac.isNotEmpty() || info.cellId.isNotEmpty()) {
-            addView(dividerView(context))
-            addView(sectionTitleView(context, "小区信息"))
-            if (info.band.isNotEmpty()) { addView(keyValueView(context, "频段", info.band)); hasCell = true }
-            if (info.pci >= 0) { addView(keyValueView(context, "PCI", info.pci.toString())); hasCell = true }
-            if (info.earfcn >= 0) {
-                val label = if (info.band.startsWith("n", ignoreCase = true)) "NR-ARFCN" else "EARFCN"
-                addView(keyValueView(context, label, info.earfcn.toString())); hasCell = true
-            }
-            if (info.tac.isNotEmpty()) {
-                val label = if (info.band.startsWith("n", ignoreCase = true)) "NR-TAC" else "TAC"
-                addView(keyValueView(context, label, info.tac)); hasCell = true
-            }
-            if (info.cellId.isNotEmpty()) {
-                val label = if (info.band.startsWith("n", ignoreCase = true)) "NR-CI" else "Cell ID"
-                addView(keyValueView(context, label, info.cellId)); hasCell = true
-            }
+            addView(sectionTitleView(context, "信号"))
+            addView(keyValueView(context, "RSRP", data.signal))
+            hasAny = true
         }
 
         // 设备标识 + SIM
-        if (info.imei.isNotEmpty() || data.goformImei.isNotEmpty() || data.goformImsi.isNotEmpty() || data.goformIccid.isNotEmpty()) {
+        if (data.goformImei.isNotEmpty() || data.goformImsi.isNotEmpty() || data.goformIccid.isNotEmpty()) {
             addView(dividerView(context))
             addView(sectionTitleView(context, "设备标识"))
-            if (info.imei.isNotEmpty()) {
-                addView(keyValueView(context, "IMEI", info.imei))
-            } else if (data.goformImei.isNotEmpty()) {
-                addView(keyValueView(context, "IMEI", data.goformImei))
-            }
-            if (data.goformImsi.isNotEmpty()) {
-                addView(keyValueView(context, "IMSI", data.goformImsi))
-            }
-            if (data.goformIccid.isNotEmpty()) {
-                addView(keyValueView(context, "ICCID", data.goformIccid))
-            }
+            if (data.goformImei.isNotEmpty()) addView(keyValueView(context, "IMEI", data.goformImei))
+            if (data.goformImsi.isNotEmpty()) addView(keyValueView(context, "IMSI", data.goformImsi))
+            if (data.goformIccid.isNotEmpty()) addView(keyValueView(context, "ICCID", data.goformIccid))
+            hasAny = true
         }
 
-        // SIM PIN 状态
-        val pinDisplay = when {
-            info.pinStatusAt.isNotEmpty() -> info.pinStatusAt
-            data.pinStatusCode in 0..2 -> when (data.pinStatusCode) {
-                0 -> "READY (已解锁)"
-                1 -> "SIM PIN (需输入)"
-                2 -> "SIM PUK (已锁定)"
-                else -> ""
-            }
+        // SIM PIN 状态（Goform pin_status）
+        val pinDisplay = when (data.pinStatusCode) {
+            0 -> "READY (已解锁)"
+            1 -> "SIM PIN (需输入)"
+            2 -> "SIM PUK (已锁定)"
             else -> ""
         }
         if (pinDisplay.isNotEmpty()) {
             addView(dividerView(context))
             addView(sectionTitleView(context, "SIM 状态"))
             addView(keyValueView(context, "PIN 状态", pinDisplay, pinDisplay.contains("PUK") || pinDisplay.contains("SIM PIN")))
-        }
-
-        // 签约速率
-        if (info.subscriptionRate.isNotEmpty()) {
-            addView(dividerView(context))
-            addView(sectionTitleView(context, "签约速率 (QoS)"))
-            info.subscriptionRate.lines().forEach { line ->
-                if (line.isNotBlank()) {
-                    addView(keyValueView(context, "", line.trim()))
-                }
-            }
-        }
-
-        // 网络注册
-        if (info.lteRegistration.isNotEmpty()) {
-            addView(dividerView(context))
-            addView(sectionTitleView(context, "网络注册"))
-            addView(keyValueView(context, "状态", info.lteRegistration))
-        }
-
-        // 模块状态
-        var hasModule = false
-        if (info.rfFunc.isNotEmpty()) {
-            if (!hasModule) { addView(dividerView(context)); addView(sectionTitleView(context, "模块状态")) }
-            addView(keyValueView(context, "射频", info.rfFunc)); hasModule = true
-        }
-        if (info.moduleState.isNotEmpty()) {
-            if (!hasModule) { addView(dividerView(context)); addView(sectionTitleView(context, "模块状态")) }
-            addView(keyValueView(context, "状态", info.moduleState)); hasModule = true
-        }
-        if (info.psAttached.isNotEmpty()) {
-            if (!hasModule) { addView(dividerView(context)); addView(sectionTitleView(context, "模块状态")) }
-            addView(keyValueView(context, "PS 域", info.psAttached)); hasModule = true
+            hasAny = true
         }
 
         // 月流量明细
@@ -174,23 +74,11 @@ object MainDialogHelper {
                 val ulGb = data.monthlyUploadBytes / (1024.0 * 1024.0 * 1024.0)
                 addView(keyValueView(context, "上行", String.format(Locale.getDefault(), "%.2f GB", ulGb)))
             }
+            hasAny = true
         }
 
-        // 空数据保护
-        val hasNewAtData = info.moduleModel.isNotEmpty() || info.firmwareDetail.isNotEmpty()
-            || info.lteRegistration.isNotEmpty() || info.wanIpAt.isNotEmpty() || info.dnsServers.isNotEmpty()
-            || info.pinStatusAt.isNotEmpty() || info.rfFunc.isNotEmpty() || info.moduleState.isNotEmpty() || info.psAttached.isNotEmpty()
-        val hasGoformIdData = data.goformImei.isNotEmpty() || data.goformImsi.isNotEmpty() || data.goformIccid.isNotEmpty()
-            || data.hardwareVersion.isNotEmpty() || data.webVersion.isNotEmpty() || data.macAddress.isNotEmpty()
-            || data.wanIp.isNotEmpty() || data.wanIpv6.isNotEmpty()
-            || data.monthlyUploadBytes > 0 || data.monthlyDownloadBytes > 0 || data.pinStatusCode in 0..2
-
-        if (info.rsrp <= Int.MIN_VALUE && info.sinr <= Int.MIN_VALUE && info.rsrq <= Int.MIN_VALUE
-            && info.networkType.isEmpty() && info.operator.isEmpty() && !hasCell
-            && info.imei.isEmpty() && info.subscriptionRate.isEmpty()
-            && !hasNewAtData && !hasGoformIdData) {
-            removeAllViews()
-            addView(emptyHintView(context, "AT 指令返回了空数据\n（设备可能暂未注册到网络）"))
+        if (!hasAny) {
+            addView(emptyHintView(context, "暂无网络数据"))
         }
     }
 
@@ -295,14 +183,6 @@ object MainDialogHelper {
         if (data.appVer.isNotEmpty()) addView(keyValueView(context, "接口版本", data.appVer))
         if (data.appVerCode.isNotEmpty()) addView(keyValueView(context, "构建代码", data.appVerCode))
 
-        val info = data.atNetworkInfo
-        if (info != null && (info.moduleModel.isNotEmpty() || info.firmwareDetail.isNotEmpty())) {
-            addView(dividerView(context))
-            addView(sectionTitleView(context, "通信模块"))
-            if (info.moduleModel.isNotEmpty()) addView(keyValueView(context, "型号", info.moduleModel))
-            if (info.firmwareDetail.isNotEmpty()) addView(keyValueView(context, "固件", info.firmwareDetail))
-        }
-
         if (data.hardwareVersion.isNotEmpty() || data.webVersion.isNotEmpty() || data.macAddress.isNotEmpty()) {
             addView(dividerView(context))
             addView(sectionTitleView(context, "设备信息"))
@@ -320,8 +200,7 @@ object MainDialogHelper {
         val gateway = SPUtil.getDeviceHost(context)
         addView(keyValueView(context, "网关地址", gateway))
 
-        val info = data.atNetworkInfo
-        val wanIpv4 = if (data.wanIp.isNotEmpty()) data.wanIp else info?.wanIpAt ?: ""
+        val wanIpv4 = data.wanIp
         if (wanIpv4.isNotEmpty() || data.wanIpv6.isNotEmpty()) {
             addView(dividerView(context))
             addView(sectionTitleView(context, "广域网 (WAN)"))
@@ -333,9 +212,6 @@ object MainDialogHelper {
             }
             if (data.pdpTypeGoform.isNotEmpty()) {
                 addView(keyValueView(context, "承载类型", data.pdpTypeGoform))
-            }
-            if (info?.dnsServers?.isNotEmpty() == true) {
-                addView(keyValueView(context, "DNS 服务", info.dnsServers))
             }
         }
     }
