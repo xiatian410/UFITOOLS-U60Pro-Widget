@@ -77,15 +77,6 @@
                 android:maxLines="1"
                 android:ellipsize="end" />
 
-            <TextView
-                android:id="@+id/tv_app_ver_code"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:text="..."
-                android:textColor="#777777"
-                android:textSize="10sp"
-                android:maxLines="1" />
         </LinearLayout>
 
         <LinearLayout

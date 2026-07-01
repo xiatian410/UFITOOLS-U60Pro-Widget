@@ -181,7 +181,6 @@ object MainDialogHelper {
             addView(keyValueView(context, "应用版本", "v$appVersion"))
         } catch (e: Exception) { DebugLogger.w("MainDialogHelper", "fillFirmwareDetail failed: ${e.message}") }
         if (data.appVer.isNotEmpty()) addView(keyValueView(context, "接口版本", data.appVer))
-        if (data.appVerCode.isNotEmpty()) addView(keyValueView(context, "构建代码", data.appVerCode))
 
         if (data.hardwareVersion.isNotEmpty() || data.webVersion.isNotEmpty() || data.macAddress.isNotEmpty()) {
             addView(dividerView(context))

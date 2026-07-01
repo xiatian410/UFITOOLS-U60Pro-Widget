@@ -45,7 +45,6 @@ object SPUtil {
             .putString("net_type", data.netType)
             .putString("carrier", data.carrier)
             .putString("app_ver", data.appVer)
-            .putString("app_ver_code", data.appVerCode)
             .putString("battery_current", data.batteryCurrent)
             .putString("battery_voltage", data.batteryVoltage)
             .putString("internal_storage", data.internalStorage)
@@ -84,7 +83,6 @@ object SPUtil {
         h = 31 * h + data.mem.hashCode()
         h = 31 * h + data.netType.hashCode()
         h = 31 * h + data.carrier.hashCode()
-        h = 31 * h + data.appVerCode.hashCode()
         h = 31 * h + data.batteryCurrent.hashCode()
         h = 31 * h + data.batteryVoltage.hashCode()       // 电池电压
         h = 31 * h + data.internalStorage.hashCode()      // 内部存储

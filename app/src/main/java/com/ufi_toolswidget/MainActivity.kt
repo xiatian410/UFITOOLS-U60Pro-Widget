@@ -800,19 +800,8 @@ class MainActivity : AppCompatActivity() {
         // 固件与存储
         val fwMain = data.appVer.ifEmpty { data.firmwareVer.ifEmpty { "--" } }
         AnimationUtil.smoothUpdateText(tvFirmware, fwMain)
-        if (data.appVerCode.isNotEmpty()) {
-            val fwSub = "build ${data.appVerCode}"
-            if (tvFirmwareSub.visibility != View.VISIBLE) {
-                tvFirmwareSub.text = fwSub
-                tvFirmwareSub.alpha = 0f
-                tvFirmwareSub.visibility = View.VISIBLE
-                tvFirmwareSub.animate().alpha(1f).setDuration(300).start()
-            } else {
-                AnimationUtil.smoothUpdateText(tvFirmwareSub, fwSub)
-            }
-        } else {
-            tvFirmwareSub.visibility = View.GONE
-        }
+        // 构建代码(build)已移除，固件副标题不再显示
+        tvFirmwareSub.visibility = View.GONE
         AnimationUtil.smoothUpdateText(tvStorage, data.internalStorage.ifEmpty { "--" })
         AnimationUtil.smoothUpdateText(tvClientIp, data.clientIp.ifEmpty { "--" })
 
@@ -848,7 +837,6 @@ class MainActivity : AppCompatActivity() {
         h = 31 * h + data.internalStorage.hashCode()
         h = 31 * h + data.clientIp.hashCode()
         h = 31 * h + data.appVer.hashCode()
-        h = 31 * h + data.appVerCode.hashCode()
         h = 31 * h + data.firmwareVer.hashCode()
         h = 31 * h + data.netType.hashCode()
         h = 31 * h + data.carrier.hashCode().toLong()

@@ -293,7 +293,6 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             val signal = sp.getString("signal", "--") ?: "--"
             val temp = sp.getString("temp", "--") ?: "--"
             val battery = sp.getString("battery", "--") ?: "--"
-            val appVerCode = sp.getString("app_ver_code", "") ?: ""
             val cpu = sp.getString("cpu", "--") ?: "--"
             val mem = sp.getString("mem", "--") ?: "--"
             val netType = sp.getString("net_type", "") ?: ""  // Goform 网络制式
@@ -306,9 +305,6 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             // 固件版本格式：UFI v4.0.0.20260421
             safeSetText(rv, R.id.tv_version,
                 if (firmwareVer.isNotEmpty()) "UFI v$firmwareVer" else "")
-            // 版本代码，紧跟固件版本后
-            safeSetText(rv, R.id.tv_app_ver_code,
-                if (appVerCode.isNotEmpty()) "build$appVerCode" else "")
 
             // 信号格数矢量图标
             val signalLevel = parseSignalLevel(signal)
@@ -779,7 +775,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
             // ── 文字色（统一）──
             for (id in listOf(
-                R.id.tv_model, R.id.tv_version, R.id.tv_app_ver_code,
+                R.id.tv_model, R.id.tv_version,
                 R.id.tv_battery, R.id.tv_charging,
                 R.id.tv_daily, R.id.tv_daily_label, R.id.tv_daily_unit,
                 R.id.tv_flow, R.id.tv_flow_label, R.id.tv_flow_unit,
@@ -873,7 +869,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
             // ── 文字色：标签类使用 dataColor 与图标保持同色（参考图标写法）──
             for (id in listOf(
-                R.id.tv_model, R.id.tv_version, R.id.tv_app_ver_code,
+                R.id.tv_model, R.id.tv_version,
                 R.id.tv_charging, R.id.tv_no_network,
                 R.id.tv_daily_label, R.id.tv_daily_unit,
                 R.id.tv_flow_label, R.id.tv_flow_unit,
@@ -1123,7 +1119,6 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             val signal = sp.getString("signal", "--") ?: "--"
             val temp = sp.getString("temp", "--") ?: "--"
             val battery = sp.getString("battery", "--") ?: "--"
-            val appVerCode = sp.getString("app_ver_code", "") ?: ""
             val cpu = sp.getString("cpu", "--") ?: "--"
             val mem = sp.getString("mem", "--") ?: "--"
             val netType = sp.getString("net_type", "") ?: ""  // Goform 网络制式
@@ -1135,8 +1130,6 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             safeSetText(rv, R.id.tv_model, deviceModel.ifEmpty { model })
             safeSetText(rv, R.id.tv_version,
                 if (firmwareVer.isNotEmpty()) "UFI v$firmwareVer" else "")
-            safeSetText(rv, R.id.tv_app_ver_code,
-                if (appVerCode.isNotEmpty()) "build$appVerCode" else "")
 
             // 信号格数矢量图标
             val signalLevel = parseSignalLevel(signal)
@@ -1331,7 +1324,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
             // 文字色（统一）
             for (id in listOf(
-                R.id.tv_model, R.id.tv_version, R.id.tv_app_ver_code,
+                R.id.tv_model, R.id.tv_version,
                 R.id.tv_battery, R.id.tv_charging,
                 R.id.tv_daily, R.id.tv_daily_label, R.id.tv_daily_unit,
                 R.id.tv_flow, R.id.tv_flow_label, R.id.tv_flow_unit,

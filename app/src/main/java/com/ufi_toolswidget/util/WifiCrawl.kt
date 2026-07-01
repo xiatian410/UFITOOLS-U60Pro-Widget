@@ -175,7 +175,6 @@ object WifiCrawl {
 
             // === /api/baseDeviceInfo 新增字段 ===
             val appVer = baseDeviceInfo.optString("app_ver", "")
-            val appVerCode = baseDeviceInfo.optString("app_ver_code", "")
             val currentNow = baseDeviceInfo.optInt("current_now", -1)        // 微安 µA
             val voltageNow = baseDeviceInfo.optInt("voltage_now", -1)        // 微伏 µV
             val internalTotal = baseDeviceInfo.optLong("internal_total_storage", -1L)
@@ -271,7 +270,6 @@ object WifiCrawl {
                 mem = String.format(Locale.getDefault(), "%.1f%%", memUsage),
                 netType = netType,
                 appVer = appVer,
-                appVerCode = appVerCode,
                 batteryCurrent = formatCurrent(currentNow),
                 batteryVoltage = formatVoltage(voltageNow),
                 internalStorage = formatStorage(internalTotal, internalUsed),
@@ -724,7 +722,6 @@ data class WifiEntity(
     val netType: String,
     // === /api/baseDeviceInfo 新增字段 ===
     val appVer: String,           // UFI-TOOLS 版本号
-    val appVerCode: String,       // UFI-TOOLS 版本代码 (如 20260601)
     val batteryCurrent: String,   // 电池电流 (mA)
     val batteryVoltage: String,   // 电池电压 (V)
     val internalStorage: String,  // 内部存储 已用/总容量 (格式化)

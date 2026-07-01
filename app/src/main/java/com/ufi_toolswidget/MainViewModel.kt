@@ -217,7 +217,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             netType = sp.getString("net_type", "") ?: "",
             carrier = sp.getString("carrier", "") ?: "",
             appVer = sp.getString("app_ver", "") ?: "",
-            appVerCode = sp.getString("app_ver_code", "") ?: "",
             batteryCurrent = sp.getString("battery_current", "") ?: "",
             batteryVoltage = sp.getString("battery_voltage", "") ?: "",
             internalStorage = sp.getString("internal_storage", "") ?: "",
