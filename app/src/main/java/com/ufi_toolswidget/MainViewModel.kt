@@ -230,6 +230,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             deviceModel = sp.getString("device_model", "") ?: "",
             firmwareVer = sp.getString("firmware_ver", "") ?: "",
             needToken = sp.getBoolean("need_token", false),
+            smsUnread = sp.getInt("sms_unread", 0),
             // 以下为 API 瞬态字段，缓存时使用默认值
             cpuTempList = emptyList(),
             cpuFreqInfo = emptyMap(),

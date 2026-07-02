@@ -44,6 +44,7 @@ object SPUtil {
             .putString("mem", data.mem)
             .putString("net_type", data.netType)
             .putString("carrier", data.carrier)
+            .putInt("sms_unread", data.smsUnread)
             .putString("app_ver", data.appVer)
             .putString("battery_current", data.batteryCurrent)
             .putString("battery_voltage", data.batteryVoltage)
@@ -83,6 +84,7 @@ object SPUtil {
         h = 31 * h + data.mem.hashCode()
         h = 31 * h + data.netType.hashCode()
         h = 31 * h + data.carrier.hashCode()
+        h = 31 * h + data.smsUnread
         h = 31 * h + data.batteryCurrent.hashCode()
         h = 31 * h + data.batteryVoltage.hashCode()       // 电池电压
         h = 31 * h + data.internalStorage.hashCode()      // 内部存储
@@ -836,6 +838,17 @@ object SPUtil {
 
     fun getNotifyMemory(ctx: Context) = getSp(ctx).getBoolean("notify_memory", false)
     fun setNotifyMemory(ctx: Context, enabled: Boolean) = getSp(ctx).edit().putBoolean("notify_memory", enabled).apply()
+
+    /** 新短信通知开关（默认开启，随主开关生效） */
+    fun getNotifySms(ctx: Context) = getSp(ctx).getBoolean("notify_sms", true)
+    fun setNotifySms(ctx: Context, enabled: Boolean) = getSp(ctx).edit().putBoolean("notify_sms", enabled).apply()
+
+    /** 未读短信数（供小组件显示，由数据刷新写入） */
+    fun getSmsUnread(ctx: Context) = getSp(ctx).getInt("sms_unread", 0)
+
+    /** 已推送过通知的最大短信 id（去重，避免重复提醒同一条短信） */
+    fun getSmsLastNotifiedId(ctx: Context) = getSp(ctx).getLong("sms_last_notified_id", 0L)
+    fun setSmsLastNotifiedId(ctx: Context, id: Long) = getSp(ctx).edit().putLong("sms_last_notified_id", id).apply()
 
     /** 阈值设置 */
     // 今日流量阈值（字节，默认 1GB）

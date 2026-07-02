@@ -116,6 +116,8 @@ object NotificationMonitor {
                     isDeviceOnline = true,
                     activity = null
                 )
+                // 新短信检查（在线时）
+                checkSms(context)
             } else {
                 // 数据获取失败 → 设备可能离线，仍需检查上下线状态以发送下线通知
                 NotificationHelper.checkDeviceOnlineStatus(context, isOnline = false)
@@ -124,6 +126,33 @@ object NotificationMonitor {
             DebugLogger.e(TAG, "performCheck failed: ${e.message}")
             // 异常也视为设备不可达，确保下线通知能触发
             NotificationHelper.checkDeviceOnlineStatus(context, isOnline = false)
+        }
+    }
+
+    /**
+     * 新短信检查：拉取未读短信，更新小组件未读数；出现比上次已提醒更新的短信时，
+     * 推送一条带「标记已读」动作的通知。受主通知开关 + 短信开关双重控制。
+     */
+    private suspend fun checkSms(context: Context) {
+        try {
+            if (!SPUtil.getNotificationEnabled(context)) return
+            if (!SPUtil.getNotifySms(context)) return
+
+            val unread = WifiCrawl.fetchUnreadSms(context)
+            // 更新小组件未读数
+            SPUtil.getSp(context).edit().putInt("sms_unread", unread.size).apply()
+            if (unread.isEmpty()) return
+
+            val lastNotified = SPUtil.getSmsLastNotifiedId(context)
+            val maxId = unread.mapNotNull { it.id.toLongOrNull() }.maxOrNull() ?: 0L
+            // 仅当存在比上次已提醒更新的短信时才推送，避免重复刷屏
+            val hasNew = unread.any { (it.id.toLongOrNull() ?: 0L) > lastNotified }
+            if (hasNew) {
+                NotificationHelper.showSmsNotification(context, unread)
+                if (maxId > lastNotified) SPUtil.setSmsLastNotifiedId(context, maxId)
+            }
+        } catch (e: Exception) {
+            DebugLogger.e(TAG, "checkSms failed: ${e.message}")
         }
     }
 }

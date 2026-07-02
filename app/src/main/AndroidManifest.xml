@@ -260,6 +260,15 @@
                 <action android:name="com.ufi_toolswidget.ACTION_ALARM_CHECK" />
             </intent-filter>
         </receiver>
+
+        <!-- 短信通知「标记已读」动作接收器 -->
+        <receiver
+            android:name=".service.SmsActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.ufi_toolswidget.ACTION_SMS_MARK_READ" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

@@ -403,6 +403,9 @@ class AlertHistoryActivity : AppCompatActivity() {
             typeface = Typeface.DEFAULT_BOLD; isAntiAlias = true
         }
         private var peakTranslationX = 0f
+        // 松手瞬间的实际位移（最后一次 isCurrentlyActive 的 dX）。触发判定用它而非峰值，
+        // 这样"划出后再拖回中间取消"能真正取消，不会误触发删除/已读。
+        private var releaseTranslationX = 0f
 
         // 阈值常量（dp 转 px 后比较）
         private val SLOW_RATIO = 0.35f
@@ -418,10 +421,14 @@ class AlertHistoryActivity : AppCompatActivity() {
             val iv = vh.itemView
             if (dX == 0f && !isCurrentlyActive) {
                 peakTranslationX = 0f
+                releaseTranslationX = 0f
                 super.onChildDraw(c, rv, vh, dX, dY, actionState, isCurrentlyActive)
                 return
             }
             if (Math.abs(dX) > Math.abs(peakTranslationX)) peakTranslationX = dX
+            // 手指仍按住时记录当前位移；松手后回落动画（!isCurrentlyActive）不再更新，
+            // 于是 releaseTranslationX 停在松手那一刻的位置
+            if (isCurrentlyActive) releaseTranslationX = dX
 
             val w = iv.width.toFloat()
             val abs = Math.abs(dX)
@@ -467,29 +474,31 @@ class AlertHistoryActivity : AppCompatActivity() {
         }
 
         override fun clearView(rv: RecyclerView, vh: RecyclerView.ViewHolder) {
-            val peak = peakTranslationX
+            // 用松手位置（release）而非峰值（peak）判定：划出后再拖回中间松手 = 取消
+            val release = releaseTranslationX
             val w = vh.itemView.width.toFloat()
             val pos = vh.bindingAdapterPosition
             val rec = if (pos != RecyclerView.NO_POSITION) adapter.currentList.getOrNull(pos) else null
             super.clearView(rv, vh)
             vh.itemView.scaleX = 1f; vh.itemView.scaleY = 1f
             peakTranslationX = 0f
+            releaseTranslationX = 0f
             if (rec == null || pos == RecyclerView.NO_POSITION) return
-            val abs = Math.abs(peak); if (abs < dpF(10f)) return
+            val abs = Math.abs(release); if (abs < dpF(10f)) return
             val ratio = abs / w
             val velocity = lastSwipeVelocityDpPerSec
 
-            // 触发判定（与视觉反馈同步）
+            // 触发判定（基于松手位置）
             val triggered = ratio >= SLOW_RATIO || (ratio >= FAST_RATIO && velocity >= FAST_VELOCITY)
             if (triggered) {
-                if (peak > 0) {
+                if (release > 0) {
                     val readId = rec.id
                     lifecycleScope.launch {
                         applyReadVisuals(vh)
                         AlertHistoryManager.markRead(this@AlertHistoryActivity, readId)
                         viewModel.refresh()
                     }
-                } else if (peak < 0) {
+                } else if (release < 0) {
                     val removeId = rec.id
                     lifecycleScope.launch {
                         AlertHistoryManager.remove(this@AlertHistoryActivity, removeId)

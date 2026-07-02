@@ -11,7 +11,9 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONObject
 import java.io.IOException
@@ -43,6 +45,7 @@ object WifiCrawl {
             var goformDeviceInfo: org.json.JSONObject? = null
             var versionInfo: org.json.JSONObject? = null
             var tokenInfo: org.json.JSONObject? = null
+            var smsUnreadCount = 0
             // 在并发请求前预先解析的 CPU 值
             var preCpuUsage = -1.0
             var preCpuUsageMap = emptyMap<String, String>()
@@ -85,6 +88,11 @@ object WifiCrawl {
                 val goformDeviceDeferred = async {
                     fetchApi("${SPUtil.getGoformCommandPath(context)}?is_all=true&cmd=wan_ipaddr,ipv6_wan_ipaddr,pdp_type,imei,imsi,iccid,hardware_version,web_version,mac_address,pin_status", t, auth, context)
                 }
+                // 短信未读数（供小组件显示）
+                val smsDeferred = async {
+                    val resp = fetchApi(smsListPath(context), t, auth, context)
+                    if (resp != null) parseUnreadMessages(resp).size else 0
+                }
                 val versionDeferred = async {
                     if (SPUtil.isVersionInfoCacheFresh(context)) {
                         val cached = SPUtil.getCachedVersionInfoJson(context)
@@ -118,6 +126,7 @@ object WifiCrawl {
                 goformDeviceInfo = goformDeviceDeferred.await()
                 versionInfo = versionDeferred.await()
                 tokenInfo = tokenDeferred.await()
+                smsUnreadCount = smsDeferred.await()
             }
             if (baseDeviceInfo == null) {
                 DebugLogger.flushToFile()
@@ -284,6 +293,7 @@ object WifiCrawl {
                 firmwareVer = firmwareVer,
                 needToken = needToken,
                 carrier = carrier,
+                smsUnread = smsUnreadCount,
                 cpuTempList = cpuTempList,
                 cpuFreqInfo = cpuFreqMap,
                 cpuUsageInfo = cpuUsageMap,
@@ -707,6 +717,112 @@ object WifiCrawl {
         }
         return ""
     }
+
+    // ═══════════════════════════════════════════
+    // 短信（SMS）—— API 文档 §6
+    // ═══════════════════════════════════════════
+
+    /** 一条短信（仅保留通知/计数需要的字段） */
+    data class SmsMessage(val id: String, val number: String, val content: String, val date: String)
+
+    /** 读取短信列表的 goform GET 路径（§6.1） */
+    private fun smsListPath(context: Context): String {
+        val orderBy = java.net.URLEncoder.encode("order by id desc", "UTF-8")
+        return "${SPUtil.getGoformCommandPath(context)}?cmd=sms_data_total&page=0&data_per_page=100&mem_store=-1&tags=10&order_by=$orderBy"
+    }
+
+    /** goform 写操作路径（把 goform_get_cmd_process 换成 goform_set_cmd_process） */
+    private fun goformSetPath(context: Context): String {
+        val get = SPUtil.getGoformCommandPath(context)
+        return if (get.contains("goform_get_cmd_process"))
+            get.replace("goform_get_cmd_process", "goform_set_cmd_process")
+        else "/api/goform/goform_set_cmd_process"
+    }
+
+    /**
+     * 判定一条短信是否未读。ZTE 约定 `tag`：0=已读,1=未读,2=已发送,3=发送失败,4=发送中,5=草稿。
+     * 兼容部分固件的 `read`/`flag` 字段（0/false=未读）。
+     */
+    private fun isUnread(m: JSONObject): Boolean {
+        if (m.has("tag")) {
+            return when (m.optString("tag").trim()) {
+                "1" -> true
+                else -> false
+            }
+        }
+        if (m.has("read")) {
+            val r = m.optString("read").trim()
+            return r == "0" || r.equals("false", ignoreCase = true)
+        }
+        if (m.has("flag")) return m.optString("flag").trim() == "1"
+        return false
+    }
+
+    /** 从 sms_data_total 响应中解析未读短信 */
+    private fun parseUnreadMessages(json: JSONObject): List<SmsMessage> {
+        val arr = json.optJSONArray("messages") ?: return emptyList()
+        val out = ArrayList<SmsMessage>(arr.length())
+        for (i in 0 until arr.length()) {
+            val m = arr.optJSONObject(i) ?: continue
+            if (!isUnread(m)) continue
+            out.add(
+                SmsMessage(
+                    id = m.optString("id").ifEmpty { m.optString("msg_id") },
+                    number = m.optString("number").ifEmpty { m.optString("from").ifEmpty { m.optString("phone") } },
+                    content = m.optString("content").ifEmpty { m.optString("body").ifEmpty { m.optString("message") } },
+                    date = m.optString("date").ifEmpty { m.optString("time") }
+                )
+            )
+        }
+        return out
+    }
+
+    /** 拉取未读短信列表（供后台通知使用）；SMS 模块未启用或失败返回空列表 */
+    suspend fun fetchUnreadSms(context: Context): List<SmsMessage> = withContext(Dispatchers.IO) {
+        try {
+            val t = System.currentTimeMillis()
+            val auth = SPUtil.getAuthToken(context)
+            ensureDeviceToken(t, context)
+            val resp = fetchApi(smsListPath(context), t, auth, context) ?: return@withContext emptyList()
+            parseUnreadMessages(resp)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            DebugLogger.logApiErr(TAG, "fetchUnreadSms failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * goform 写操作（x-www-form-urlencoded）。成功判定 result=success（写操作失败时 HTTP 仍是 200）。
+     */
+    private suspend fun goformPost(context: Context, form: String): Boolean {
+        val t = System.currentTimeMillis()
+        val auth = SPUtil.getAuthToken(context)
+        ensureDeviceToken(t, context)
+        val path = goformSetPath(context)
+        val sign = NetUtil.generateKanoSign("POST", path, t, context)
+        val baseUrl = SPUtil.buildBaseUrl(context).trimEnd('/')
+        val body = form.toRequestBody("application/x-www-form-urlencoded".toMediaType())
+        val builder = Request.Builder()
+            .url("$baseUrl$path")
+            .post(body)
+            .addHeader("kano-t", t.toString())
+            .addHeader("kano-sign", sign)
+            .addHeader("Authorization", auth)
+        SPUtil.getDeviceToken(context).takeIf { it.isNotEmpty() }
+            ?.let { builder.addHeader("X-Device-Token", it) }
+        val resp = executeRequest(builder.build()) ?: return false
+        return resp.isSuccessful && resp.body.contains("success", ignoreCase = true)
+    }
+
+    /** 标记短信为已读（§6.2 SET_MSG_READ），ids 用 ; 拼接 */
+    suspend fun markSmsRead(context: Context, ids: List<String>): Boolean = withContext(Dispatchers.IO) {
+        val clean = ids.filter { it.isNotBlank() }
+        if (clean.isEmpty()) return@withContext false
+        val idParam = java.net.URLEncoder.encode(clean.joinToString(";"), "UTF-8")
+        goformPost(context, "goformId=SET_MSG_READ&msg_id=$idParam")
+    }
 }
 
 data class WifiEntity(
@@ -739,6 +855,8 @@ data class WifiEntity(
     val needToken: Boolean,       // 是否需要登录验证
     // === 运营商（Goform network_provider 或 IMSI 推导）===
     val carrier: String,          // 运营商名称（如 "China Mobile" / "中国移动"）
+    // === 短信未读数（供小组件显示）===
+    val smsUnread: Int,           // 未读短信数量，0 表示无未读
     // === 详细硬件信息（用于主界面弹窗详情）===
     val cpuTempList: List<CpuTempItem>,     // cpu_temp_list 各模块温度
     val cpuFreqInfo: Map<String, CpuFreqItem>, // cpuFreqInfo 各核心频率

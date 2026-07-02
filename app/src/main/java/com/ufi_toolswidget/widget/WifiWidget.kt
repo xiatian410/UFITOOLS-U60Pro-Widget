@@ -305,6 +305,8 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             // 固件版本格式：UFI v4.0.0.20260421
             safeSetText(rv, R.id.tv_version,
                 if (firmwareVer.isNotEmpty()) "UFI v$firmwareVer" else "")
+            // 版本号后方：短信图标 + 未读数量
+            renderSmsBadge(rv, sp)
 
             // 信号格数矢量图标
             val signalLevel = parseSignalLevel(signal)
@@ -619,7 +621,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
             // ── 图标着色 ──
             for (id in listOf(
-                R.id.iv_router, R.id.iv_signal_bars, R.id.iv_network,
+                R.id.iv_router, R.id.iv_sms, R.id.iv_signal_bars, R.id.iv_network,
                 R.id.iv_battery, R.id.iv_temp
             )) {
                 safeSetImageViewTint(rv, id, textColor)
@@ -666,6 +668,19 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
         private fun safeSetText(rv: RemoteViews, id: Int, text: String) {
             try { rv.setTextViewText(id, text) } catch (_: Exception) {
                 // RemoteViews: 跨进程通信，id 不存在时可能抛异常，静默吞掉
+            }
+        }
+
+        /** 渲染短信未读徽标（iv_sms + tv_sms_count）：未读为 0 时隐藏 */
+        private fun renderSmsBadge(rv: RemoteViews, sp: android.content.SharedPreferences) {
+            val unread = sp.getInt("sms_unread", 0)
+            if (unread > 0) {
+                safeSetText(rv, R.id.tv_sms_count, if (unread > 99) "99+" else unread.toString())
+                safeSetVisibility(rv, R.id.iv_sms, true)
+                safeSetVisibility(rv, R.id.tv_sms_count, true)
+            } else {
+                safeSetVisibility(rv, R.id.iv_sms, false)
+                safeSetVisibility(rv, R.id.tv_sms_count, false)
             }
         }
 
@@ -775,7 +790,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
             // ── 文字色（统一）──
             for (id in listOf(
-                R.id.tv_model, R.id.tv_version,
+                R.id.tv_model, R.id.tv_version, R.id.tv_sms_count,
                 R.id.tv_battery, R.id.tv_charging,
                 R.id.tv_daily, R.id.tv_daily_label, R.id.tv_daily_unit,
                 R.id.tv_flow, R.id.tv_flow_label, R.id.tv_flow_unit,
@@ -790,7 +805,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
             // ── 图标着色（统一）──
             for (id in listOf(
-                R.id.iv_router, R.id.iv_signal_bars, R.id.iv_network,
+                R.id.iv_router, R.id.iv_sms, R.id.iv_signal_bars, R.id.iv_network,
                 R.id.iv_battery, R.id.iv_cpu, R.id.iv_chip,
                 R.id.iv_antenna, R.id.iv_temp
             )) {
@@ -869,7 +884,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
             // ── 文字色：标签类使用 dataColor 与图标保持同色（参考图标写法）──
             for (id in listOf(
-                R.id.tv_model, R.id.tv_version,
+                R.id.tv_model, R.id.tv_version, R.id.tv_sms_count,
                 R.id.tv_charging, R.id.tv_no_network,
                 R.id.tv_daily_label, R.id.tv_daily_unit,
                 R.id.tv_flow_label, R.id.tv_flow_unit,
@@ -891,7 +906,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
             // ── 图标着色（使用 dataHighlight 与数据值保持一致，体现动态取色）──
             for (id in listOf(
-                R.id.iv_router, R.id.iv_signal_bars, R.id.iv_network,
+                R.id.iv_router, R.id.iv_sms, R.id.iv_signal_bars, R.id.iv_network,
                 R.id.iv_battery, R.id.iv_cpu, R.id.iv_chip,
                 R.id.iv_antenna, R.id.iv_temp
             )) {
@@ -1130,6 +1145,8 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             safeSetText(rv, R.id.tv_model, deviceModel.ifEmpty { model })
             safeSetText(rv, R.id.tv_version,
                 if (firmwareVer.isNotEmpty()) "UFI v$firmwareVer" else "")
+            // 版本号后方：短信图标 + 未读数量
+            renderSmsBadge(rv, sp)
 
             // 信号格数矢量图标
             val signalLevel = parseSignalLevel(signal)
@@ -1324,7 +1341,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
             // 文字色（统一）
             for (id in listOf(
-                R.id.tv_model, R.id.tv_version,
+                R.id.tv_model, R.id.tv_version, R.id.tv_sms_count,
                 R.id.tv_battery, R.id.tv_charging,
                 R.id.tv_daily, R.id.tv_daily_label, R.id.tv_daily_unit,
                 R.id.tv_flow, R.id.tv_flow_label, R.id.tv_flow_unit,
@@ -1339,7 +1356,7 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
 
             // 图标着色（统一）
             for (id in listOf(
-                R.id.iv_router, R.id.iv_signal_bars, R.id.iv_network,
+                R.id.iv_router, R.id.iv_sms, R.id.iv_signal_bars, R.id.iv_network,
                 R.id.iv_battery, R.id.iv_cpu, R.id.iv_chip,
                 R.id.iv_antenna, R.id.iv_temp
             )) {

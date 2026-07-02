@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 圆润聊天气泡 + 三个镂空圆点（evenOdd 让圆点成为透空），与整体图标的圆角风格一致 -->
+    <path
+        android:fillColor="#3A0D0D"
+        android:fillType="evenOdd"
+        android:pathData="M6,3.5h12a3.5,3.5 0 0 1 3.5,3.5v7a3.5,3.5 0 0 1 -3.5,3.5h-6.2l-4.3,3.2a0.9,0.9 0 0 1 -1.45,-0.72v-2.48h0.45a3.5,3.5 0 0 1 -3.45,-3.5v-7a3.5,3.5 0 0 1 3.5,-3.5z M7.7,9.4a1.15,1.15 0 1 0 0.02,0 z M11.99,9.4a1.15,1.15 0 1 0 0.02,0 z M16.28,9.4a1.15,1.15 0 1 0 0.02,0 z" />
+</vector>

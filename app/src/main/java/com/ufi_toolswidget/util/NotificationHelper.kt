@@ -18,6 +18,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.ufi_toolswidget.MainActivity
 import com.ufi_toolswidget.R
+import com.ufi_toolswidget.service.SmsActionReceiver
 import com.ufi_toolswidget.util.ToastUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,12 @@ object NotificationHelper {
 
     private const val CHANNEL_ID = "device_alerts"
     private const val CHANNEL_NAME = "设备提醒"
+
+    private const val SMS_CHANNEL_ID = "sms_alerts"
+    private const val SMS_CHANNEL_NAME = "短信提醒"
+    /** 短信通知固定 ID：新短信通知覆盖旧的，避免堆叠刷屏 */
+    private const val SMS_NOTIFY_ID = 20001
+    private const val TYPE_SMS = "sms"
 
     // 通知类型标识（用于警报历史分类）
     private const val TYPE_DAILY_FLOW      = "daily_flow"
@@ -90,6 +97,20 @@ object NotificationHelper {
                 setShowBadge(true)
             }
             nm.createNotificationChannel(channel)
+
+            // 短信提醒渠道
+            val smsChannel = NotificationChannel(SMS_CHANNEL_ID, SMS_CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "新短信提醒（支持一键标记已读）"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 250, 150, 250)
+                setSound(alarmSound, AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build())
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+                setShowBadge(true)
+            }
+            nm.createNotificationChannel(smsChannel)
         }
     }
 
@@ -232,6 +253,60 @@ object NotificationHelper {
         CoroutineScope(Dispatchers.IO).launch {
             AlertHistoryManager.addAlert(context, type, title, message)
         }
+    }
+
+    /**
+     * 发送/更新新短信通知，带「标记已读」动作按钮（调用设备 SET_MSG_READ）。
+     * 固定通知 ID，新短信覆盖旧通知，避免堆叠刷屏。
+     *
+     * @param unread 当前未读短信列表（按 id 倒序，第一条为最新）
+     */
+    fun showSmsNotification(context: Context, unread: List<WifiCrawl.SmsMessage>) {
+        if (!hasPermission(context)) return
+        if (unread.isEmpty()) return
+
+        val count = unread.size
+        val latest = unread.first()
+        val sender = latest.number.ifEmpty { "未知号码" }
+        val preview = latest.content.replace("\n", " ").take(80)
+        val title = if (count > 1) "$count 条未读短信" else "新短信 · $sender"
+        val text = if (count > 1) "$sender：$preview" else preview
+
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openPending = PendingIntent.getActivity(
+            context, SMS_NOTIFY_ID, openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val ids = unread.map { it.id }.filter { it.isNotEmpty() }
+        val markIntent = Intent(context, SmsActionReceiver::class.java).apply {
+            action = SmsActionReceiver.ACTION_MARK_READ
+            putExtra(SmsActionReceiver.EXTRA_IDS, ids.joinToString(","))
+            putExtra(SmsActionReceiver.EXTRA_NOTIFY_ID, SMS_NOTIFY_ID)
+        }
+        val markPending = PendingIntent.getBroadcast(
+            context, SMS_NOTIFY_ID + 1, markIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, SMS_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_sms)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setAutoCancel(true)
+            .setContentIntent(openPending)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .addAction(R.drawable.ic_sms, "标记已读", markPending)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(SMS_NOTIFY_ID, notification)
+        addAlertAsync(context, TYPE_SMS, title, text)
     }
 
     // ─── 主检查入口 ───
