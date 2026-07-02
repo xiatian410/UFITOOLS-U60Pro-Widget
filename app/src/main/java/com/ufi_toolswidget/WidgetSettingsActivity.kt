@@ -90,6 +90,7 @@ class WidgetSettingsActivity : AppCompatActivity() {
     private var showMem = true
     private var showTime = true
     private var showDivider = true
+    private var showSms = true
 
     // 活跃弹窗引用
     private var activeWidgetThemeDialog: Dialog? = null
@@ -780,6 +781,7 @@ class WidgetSettingsActivity : AppCompatActivity() {
         showMem = SPUtil.getShowMem(this)
         showTime = SPUtil.getShowTime(this)
         showDivider = SPUtil.getShowDivider(this)
+        showSms = SPUtil.getShowSms(this)
 
         CommonSettingsItemHelper.setupSettingItem(
             findViewById(R.id.item_display_info),
@@ -793,8 +795,8 @@ class WidgetSettingsActivity : AppCompatActivity() {
     }
 
     private fun updateDisplayInfoSubtitle() {
-        val enabled = listOf(showTemp, showModel, showSignal, showBattery, showCpu, showMem, showTime, showDivider).count { it }
-        val total = 8
+        val enabled = listOf(showTemp, showModel, showSignal, showBattery, showCpu, showMem, showTime, showDivider, showSms).count { it }
+        val total = 9
         val label = if (enabled == 0) "全部关闭" else "已开启 $enabled/$total 项"
         try {
             findInItem<TextView>(R.id.item_display_info, R.id.common_item_subtitle)?.text = label
@@ -824,7 +826,8 @@ class WidgetSettingsActivity : AppCompatActivity() {
             "cpu" to "CPU 占用",
             "mem" to "内存占用",
             "time" to "更新时间",
-            "divider" to "分割线"
+            "divider" to "分割线",
+            "sms" to "短信"
         )
 
         // 临时状态存储
@@ -836,7 +839,8 @@ class WidgetSettingsActivity : AppCompatActivity() {
             "cpu" to showCpu,
             "mem" to showMem,
             "time" to showTime,
-            "divider" to showDivider
+            "divider" to showDivider,
+            "sms" to showSms
         )
 
         // 使用双栏网格布局
@@ -905,6 +909,7 @@ class WidgetSettingsActivity : AppCompatActivity() {
                 showMem = tempStates["mem"]!!
                 showTime = tempStates["time"]!!
                 showDivider = tempStates["divider"]!!
+                showSms = tempStates["sms"]!!
 
                 SPUtil.setShowTemp(this@WidgetSettingsActivity, showTemp)
                 SPUtil.setShowModel(this@WidgetSettingsActivity, showModel)
@@ -914,6 +919,7 @@ class WidgetSettingsActivity : AppCompatActivity() {
                 SPUtil.setShowMem(this@WidgetSettingsActivity, showMem)
                 SPUtil.setShowTime(this@WidgetSettingsActivity, showTime)
                 SPUtil.setShowDivider(this@WidgetSettingsActivity, showDivider)
+                SPUtil.setShowSms(this@WidgetSettingsActivity, showSms)
 
                 updateDisplayInfoSubtitle()
                 renderWidgetsNow()

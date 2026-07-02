@@ -230,7 +230,8 @@ object NotificationHelper {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(appIconBitmap(context))          // 通知右侧显示软件图标
             .setContentTitle(title)
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_MAX)  // 最高优先级，确保横幅弹出
@@ -293,6 +294,7 @@ object NotificationHelper {
 
         val notification = NotificationCompat.Builder(context, SMS_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_sms)
+            .setLargeIcon(appIconBitmap(context))          // 通知右侧显示软件图标
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
@@ -676,4 +678,10 @@ object NotificationHelper {
             return timeFormat.format(Date())
         }
     }
+
+    /** 解码应用图标位图，用于通知右侧的大图标（让通知显示软件图标）。失败返回 null。 */
+    private fun appIconBitmap(context: Context): android.graphics.Bitmap? =
+        try {
+            android.graphics.BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher)
+        } catch (_: Exception) { null }
 }

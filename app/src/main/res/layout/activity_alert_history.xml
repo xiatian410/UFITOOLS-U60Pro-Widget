@@ -69,6 +69,21 @@
                 app:icon="@drawable/ic_settings"
                 app:iconSize="18dp"
                 app:iconTint="@color/text_main" />
+
+            <!-- 右上：筛选（设置按钮左侧，仅图标） -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_filter_toggle"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_gravity="end|top"
+                android:layout_marginTop="6dp"
+                android:layout_marginEnd="42dp"
+                android:visibility="gone"
+                android:contentDescription="筛选"
+                app:icon="@drawable/ic_filter"
+                app:iconSize="18dp"
+                app:iconTint="@color/text_main" />
         </FrameLayout>
 
         <!-- Action buttons -->
@@ -120,33 +135,6 @@
                 app:iconGravity="textStart"
                 app:iconPadding="6dp" />
         </LinearLayout>
-
-        <!-- Filter button row (right-aligned) -->
-        <FrameLayout
-            android:id="@+id/filter_row"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginBottom="4dp"
-            android:visibility="gone">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_filter_toggle"
-                style="@style/Widget.Material3.Button"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:layout_gravity="end"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:text="筛选"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                app:cornerRadius="10dp"
-                app:icon="@drawable/ic_filter"
-                app:iconSize="14dp"
-                app:iconGravity="textStart"
-                app:iconPadding="4dp" />
-        </FrameLayout>
 
         <!-- RecyclerView -->
         <androidx.recyclerview.widget.RecyclerView

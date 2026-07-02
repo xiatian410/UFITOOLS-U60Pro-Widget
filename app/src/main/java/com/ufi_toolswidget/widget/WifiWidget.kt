@@ -671,10 +671,11 @@ abstract class BaseWifiWidget(val layoutId: Int) : AppWidgetProvider() {
             }
         }
 
-        /** 渲染短信未读徽标（iv_sms + tv_sms_count）：未读为 0 时隐藏 */
+        /** 渲染短信未读徽标（iv_sms + tv_sms_count）：未读为 0 或用户关闭显示时隐藏 */
         private fun renderSmsBadge(rv: RemoteViews, sp: android.content.SharedPreferences) {
             val unread = sp.getInt("sms_unread", 0)
-            if (unread > 0) {
+            val show = sp.getBoolean("show_sms", true)
+            if (unread > 0 && show) {
                 safeSetText(rv, R.id.tv_sms_count, if (unread > 99) "99+" else unread.toString())
                 safeSetVisibility(rv, R.id.iv_sms, true)
                 safeSetVisibility(rv, R.id.tv_sms_count, true)

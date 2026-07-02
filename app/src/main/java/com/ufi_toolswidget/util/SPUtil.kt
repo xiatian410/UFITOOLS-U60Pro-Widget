@@ -138,6 +138,9 @@ object SPUtil {
     fun getShowTime(ctx: Context) = getSp(ctx).getBoolean("show_time", true)
     fun getShowBattery(ctx: Context) = getSp(ctx).getBoolean("show_battery", true)
     fun getShowMem(ctx: Context) = getSp(ctx).getBoolean("show_mem", true)
+    /** 小组件是否显示短信未读角标（默认显示） */
+    fun getShowSms(ctx: Context) = getSp(ctx).getBoolean("show_sms", true)
+    fun setShowSms(ctx: Context, show: Boolean) = getSp(ctx).edit().putBoolean("show_sms", show).apply()
 
     // ==================== 各尺寸独立显隐设置 ====================
     // 2×1 迷你版（默认：信号+电池+网络类型 开启）

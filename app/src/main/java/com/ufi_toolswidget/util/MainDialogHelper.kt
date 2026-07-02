@@ -180,13 +180,15 @@ object MainDialogHelper {
             val appVersion = context.packageManager.getPackageInfo(context.packageName, 0).versionName
             addView(keyValueView(context, "应用版本", "v$appVersion"))
         } catch (e: Exception) { DebugLogger.w("MainDialogHelper", "fillFirmwareDetail failed: ${e.message}") }
-        if (data.appVer.isNotEmpty()) addView(keyValueView(context, "接口版本", data.appVer))
+        if (data.appVer.isNotEmpty()) addView(keyValueView(context, "UFI版本", data.appVer))
 
-        if (data.hardwareVersion.isNotEmpty() || data.webVersion.isNotEmpty() || data.macAddress.isNotEmpty()) {
+        if (data.firmwareVer.isNotEmpty() || data.hardwareVersion.isNotEmpty() ||
+            data.webVersion.isNotEmpty() || data.macAddress.isNotEmpty()) {
             addView(dividerView(context))
             addView(sectionTitleView(context, "设备信息"))
+            if (data.firmwareVer.isNotEmpty()) addView(keyValueView(context, "固件版本", data.firmwareVer))
             if (data.hardwareVersion.isNotEmpty()) addView(keyValueView(context, "硬件版本", data.hardwareVersion))
-            if (data.webVersion.isNotEmpty()) addView(keyValueView(context, "固件版本", data.webVersion))
+            if (data.webVersion.isNotEmpty()) addView(keyValueView(context, "Web 版本", data.webVersion))
             if (data.macAddress.isNotEmpty()) addView(keyValueView(context, "MAC 地址", data.macAddress))
         }
     }
@@ -307,11 +309,12 @@ object MainDialogHelper {
                 hasData = true
             }
 
-            // 电流 (mA)
-            if (curStr != null && curStr != "--") {
-                addView(keyValueView(context, "电流", curStr))
+            // 电流 (mA)：只要有数据就显示
+            if (curStr != null) {
+                addView(keyValueView(context, "电流", if (curStr == "--") "无数据" else curStr))
                 hasData = true
-
+            }
+            if (curStr != null && curStr != "--") {
                 // 功率估算: P = V × I
                 if (volStr != null && volStr != "--") {
                     try {

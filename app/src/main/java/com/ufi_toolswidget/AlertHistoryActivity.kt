@@ -47,7 +47,6 @@ class AlertHistoryActivity : AppCompatActivity() {
     private lateinit var emptyState: View
     private lateinit var tvEmptyText: TextView
     private lateinit var actionBar: LinearLayout
-    private lateinit var filterRow: FrameLayout
     private lateinit var contentLayout: View
     private lateinit var rootLayout: FrameLayout
     private lateinit var paginationBar: LinearLayout
@@ -65,7 +64,7 @@ class AlertHistoryActivity : AppCompatActivity() {
     private val typeOptions = listOf(
         "all" to "全部", "daily_flow" to "日用量", "monthly_flow" to "月用量",
         "temp" to "温度", "cpu" to "CPU", "memory" to "内存",
-        "battery" to "电池", "device_online" to "设备"
+        "battery" to "电池", "device_online" to "设备", "sms" to "短信"
     )
     private val readOptions = listOf(
         "all" to "全部", "unread" to "未读", "read" to "已读"
@@ -99,7 +98,6 @@ class AlertHistoryActivity : AppCompatActivity() {
         emptyState = findViewById(R.id.empty_state)
         tvEmptyText = findViewById(R.id.tv_empty_text)
         actionBar = findViewById(R.id.action_bar)
-        filterRow = findViewById(R.id.filter_row)
         btnFilterToggle = findViewById(R.id.btn_filter_toggle)
         tvSubtitle = findViewById(R.id.tv_alert_subtitle)
         contentLayout = findViewById(R.id.content_layout)
@@ -196,19 +194,19 @@ class AlertHistoryActivity : AppCompatActivity() {
     // ═══════════════════════════════════════════
 
     private fun setupFilterToggle() {
-        val secondaryColor = ThemeColors.textSecondary(this)
-        btnFilterToggle.backgroundTintList = ColorStateList.valueOf(secondaryColor)
-        btnFilterToggle.strokeWidth = 0
+        // 仅图标按钮（位于右上角设置按钮左侧）
         AnimationUtil.applyScaleClickAnimation(btnFilterToggle) { showFilterDialog() }
-        btnFilterToggle.setTextColor(Color.WHITE)
-        btnFilterToggle.iconTint = ColorStateList.valueOf(Color.WHITE)
         updateFilterToggleLabel()
     }
 
     private fun updateFilterToggleLabel() {
         val f = viewModel.filter.value
         val n = (if (f.type != "all") 1 else 0) + (if (f.readStatus != "all") 1 else 0)
-        btnFilterToggle.text = if (n > 0) "筛选($n)" else "筛选"
+        // 仅保留图标：用无障碍描述带出筛选数量；有筛选时图标高亮为绿色
+        btnFilterToggle.contentDescription = if (n > 0) "筛选($n)" else "筛选"
+        val tint = if (n > 0) 0xFF4CAF50.toInt()
+            else androidx.core.content.ContextCompat.getColor(this, R.color.text_main)
+        btnFilterToggle.iconTint = ColorStateList.valueOf(tint)
     }
 
     private fun showFilterDialog() {
@@ -557,10 +555,10 @@ class AlertHistoryActivity : AppCompatActivity() {
                         tvSubtitle.text = if (unread > 0) "共 ${total} 条，${unread} 条未读" else "共 ${total} 条"
                         if (total > 0) {
                             actionBar.visibility = View.VISIBLE
-                            filterRow.visibility = View.VISIBLE
+                            btnFilterToggle.visibility = View.VISIBLE
                         } else {
                             actionBar.visibility = View.GONE
-                            filterRow.visibility = View.GONE
+                            btnFilterToggle.visibility = View.GONE
                         }
                     }
                 }
