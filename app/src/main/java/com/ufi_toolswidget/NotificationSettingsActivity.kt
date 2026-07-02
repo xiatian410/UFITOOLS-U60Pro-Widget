@@ -65,6 +65,7 @@ class NotificationSettingsActivity : AppCompatActivity() {
         initDeviceCpu()
         initDeviceBattery()
         initDeviceMemory()
+        initNotifySms()
         initMonitorInterval()
         initBackgroundKeepAliveEntry()
         initSettingsContainerVisibility()
@@ -615,6 +616,27 @@ class NotificationSettingsActivity : AppCompatActivity() {
                 ?.findViewById<TextView>(R.id.common_switch_subtitle)
                 ?.text = if (notifyDeviceOnline) "已开启" else "已关闭"
         } catch (e: Exception) { DebugLogger.w("NotificationSettingsActivity", "update device online subtitle failed: ${e.message}") }
+    }
+
+    // ==================== 6.5 新短信提醒（直接开关，联动短信通知功能） ====================
+
+    private fun initNotifySms() {
+        val enabled = SPUtil.getNotifySms(this)
+        CommonSettingsItemHelper.setupSwitchItem(
+            itemView = findViewById(R.id.item_notify_sms),
+            iconRes = R.drawable.ic_sms,
+            label = "新短信提醒",
+            subtitle = if (enabled) "已开启" else "已关闭",
+            initialChecked = enabled,
+            onToggle = { checked ->
+                SPUtil.setNotifySms(this, checked)
+                try {
+                    findViewById<ViewGroup>(R.id.item_notify_sms)
+                        ?.findViewById<TextView>(R.id.common_switch_subtitle)
+                        ?.text = if (checked) "已开启" else "已关闭"
+                } catch (e: Exception) { DebugLogger.w("NotificationSettingsActivity", "update sms subtitle failed: ${e.message}") }
+            }
+        )
     }
 
     // ==================== 7. 电量过低提醒 ====================

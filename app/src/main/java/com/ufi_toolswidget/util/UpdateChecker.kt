@@ -42,7 +42,7 @@ import com.ufi_toolswidget.util.ToastUtil
 object UpdateChecker {
 
     // ====== version.json 地址 ======
-    private const val VERSION_PATH = "Asunano/UFITOOLS-Widget/main/version.json"
+    private const val VERSION_PATH = "xiatian410/UFITOOLS-U60Pro-Widget/main/version.json"
     const val GITHUB_RAW_BASE = "https://raw.githubusercontent.com/"
     const val MIRROR_PROXY_BASE = "https://v4.gh-proxy.org/https://raw.githubusercontent.com/"
 

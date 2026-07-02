@@ -217,7 +217,7 @@ class AlertHistoryActivity : AppCompatActivity() {
         var curRead = viewModel.filter.value.readStatus
 
         CommonDialogHelper.showCommonDialog(
-            context = ctx, title = "筛选警报", iconRes = R.drawable.ic_notification,
+            context = ctx, title = "筛选通知", iconRes = R.drawable.ic_notification,
             onFill = { content ->
                 content.addView(sectionLabel("类型"))
                 var typeUpdate: ((String) -> Unit)? = null

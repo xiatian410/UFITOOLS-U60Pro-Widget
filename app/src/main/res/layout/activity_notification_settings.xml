@@ -147,6 +147,11 @@
                 layout="@layout/layout_common_setting_item"
                 android:id="@+id/item_device_memory" />
 
+            <!-- 新短信提醒 -->
+            <include
+                layout="@layout/layout_common_switch_item"
+                android:id="@+id/item_notify_sms" />
+
         </LinearLayout>
 
     </LinearLayout>

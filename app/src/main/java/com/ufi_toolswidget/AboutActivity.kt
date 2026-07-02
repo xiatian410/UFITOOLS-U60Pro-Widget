@@ -106,22 +106,10 @@ class AboutActivity : AppCompatActivity() {
             findViewById(R.id.card_github),
             iconRes = R.drawable.ic_github,
             title = "开源地址",
-            subtitle = "github.com/Asunano/UFITOOLS-Widget",
+            subtitle = "github.com/xiatian410/UFITOOLS-U60Pro-Widget",
             onClick = {
                 startActivity(Intent(Intent.ACTION_VIEW,
-                    Uri.parse("https://github.com/Asunano/UFITOOLS-Widget")))
-            }
-        )
-
-        // 作者博客
-        CommonSettingsItemHelper.setupSettingItem(
-            findViewById(R.id.card_blog),
-            iconRes = R.drawable.ic_blog,
-            title = "作者博客",
-            subtitle = "blog.drxian.cn/archives/1322",
-            onClick = {
-                startActivity(Intent(Intent.ACTION_VIEW,
-                    Uri.parse("https://blog.drxian.cn/archives/1322")))
+                    Uri.parse("https://github.com/xiatian410/UFITOOLS-U60Pro-Widget")))
             }
         )
 
@@ -238,7 +226,7 @@ class AboutActivity : AppCompatActivity() {
 
             CommonDialogHelper.showCommonDialog(
                 context = ctx,
-                title = "赞赏",
+                title = "赞赏原版项目作者",
                 iconRes = R.drawable.ic_heart,
                 onFill = { content ->
                     // 提示文字
