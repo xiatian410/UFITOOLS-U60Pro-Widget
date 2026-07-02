@@ -758,6 +758,27 @@ object WifiCrawl {
         return false
     }
 
+    // 判定是否像 Base64（字符集 + 长度是 4 的倍数）
+    private val BASE64_RE = Regex("^[A-Za-z0-9+/]+={0,2}$")
+
+    /**
+     * 解密短信正文：设备正文一般为 Base64；纯数字内容原样返回无需解密。
+     * Base64 解出的字节优先按 UTF-8 解释，若出现乱码再回退 UCS2(UTF-16BE)。
+     * 不像 Base64 的字符串原样返回，避免误解码把明文变乱码。
+     */
+    private fun decodeSmsBody(raw: String): String {
+        val s = raw.trim()
+        if (s.isEmpty()) return s
+        if (s.all { it.isDigit() }) return s                       // 纯数字 → 原样
+        if (s.length % 4 != 0 || !BASE64_RE.matches(s)) return s    // 不像 Base64 → 原样
+        return try {
+            val bytes = android.util.Base64.decode(s, android.util.Base64.DEFAULT)
+            val utf8 = String(bytes, Charsets.UTF_8)
+            val decoded = if (utf8.contains('�')) String(bytes, Charsets.UTF_16BE) else utf8
+            decoded.ifBlank { s }
+        } catch (_: Exception) { s }
+    }
+
     /** 从 sms_data_total 响应中解析未读短信 */
     private fun parseUnreadMessages(json: JSONObject): List<SmsMessage> {
         val arr = json.optJSONArray("messages") ?: return emptyList()
@@ -765,11 +786,12 @@ object WifiCrawl {
         for (i in 0 until arr.length()) {
             val m = arr.optJSONObject(i) ?: continue
             if (!isUnread(m)) continue
+            val rawContent = m.optString("content").ifEmpty { m.optString("body").ifEmpty { m.optString("message") } }
             out.add(
                 SmsMessage(
                     id = m.optString("id").ifEmpty { m.optString("msg_id") },
                     number = m.optString("number").ifEmpty { m.optString("from").ifEmpty { m.optString("phone") } },
-                    content = m.optString("content").ifEmpty { m.optString("body").ifEmpty { m.optString("message") } },
+                    content = decodeSmsBody(rawContent),
                     date = m.optString("date").ifEmpty { m.optString("time") }
                 )
             )
